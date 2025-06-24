@@ -10,12 +10,18 @@ import {
 } from 'react-router-dom';
 import { GoogleMap, useJsApiLoader, DirectionsRenderer } from '@react-google-maps/api';
 import { collection, addDoc, query, where, getDocs, serverTimestamp, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import toast, { Toaster } from 'react-hot-toast';
 
 const GOOGLE_MAPS_API_KEY = 'AIzaSyB0biE37HC3gkUvKIB_ZfzIk30ZdRARZEM';
 const COIMBATORE_CENTER = { lat: 11.0168, lng: 76.9558 };
 const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' };
 const RATE_PER_KM = 6.80; // ₹6.80 per kilometer
 const ADDITIONAL_EXPENSES = 20; // ₹20 additional expenses
+
+// --- Input Normalization Helper ---
+function normalizePlace(str) {
+  return str.trim().toLowerCase();
+}
 
 function UserProfile({ user, userProfile }) {
   return (
@@ -290,10 +296,10 @@ function UserProfilePage({ user, userProfile, onBack, onSignOut }) {
                         <div className="font-semibold text-gray-800 mb-2">
                           {booking.pilotId === user.uid ? '🚗 You drove' : '🚶 You traveled'}
                         </div>
-                        <div className="text-sm text-gray-600 space-y-1">
-                          <div>📍 From: {booking.source}</div>
-                          <div>🎯 To: {booking.destination}</div>
-                          <div>💰 Fare: ₹{booking.fare}</div>
+                        <div className="text-xs text-gray-700 space-y-1">
+                          <div>📍 From: {booking.source || <span className="text-red-500">Not set</span>}</div>
+                          <div>🎯 To: {booking.destination || <span className="text-red-500">Not set</span>}</div>
+                          <div>💰 Fare: ₹{booking.fare ?? <span className="text-red-500">Not set</span>}</div>
                           <div>📅 {booking.createdAt?.toDate?.() ? 
                             booking.createdAt.toDate().toLocaleDateString() : 
                             'Recently'
@@ -370,6 +376,7 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile }) {
   const [fare, setFare] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [pendingBookings, setPendingBookings] = useState([]);
 
   // Calculate distance and fare using Google Maps Directions API
   useEffect(() => {
@@ -404,36 +411,69 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile }) {
     }
   }, [source, destination]);
 
+  useEffect(() => {
+    const fetchPending = async () => {
+      const q = query(
+        collection(db, 'trips'),
+        where('driverId', '==', user.uid),
+        where('status', '==', 'pending')
+      );
+      const snapshot = await getDocs(q);
+      setPendingBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    };
+    fetchPending();
+  }, [user.uid]);
+
   const handleStartTrip = async () => {
-    if (source && destination) {
-      setTripStarted(true);
-      setSaving(true);
-      setSaveError('');
-      try {
-        await addDoc(collection(db, 'trips'), {
-          driverId: user.uid,
-          driverName: userProfile?.username || user.displayName || '',
-          driverEmail: user.email,
-          driverPhone: userProfile?.phoneNumber || '',
-          driverPhoto: user.photoURL || '',
-          source,
-          destination,
-          distance,
-          distanceInKm,
-          fare: parseFloat(fare),
-          ratePerKm: RATE_PER_KM,
-          additionalExpenses: ADDITIONAL_EXPENSES,
-          createdAt: serverTimestamp(),
-          active: true,
-        });
-      } catch (err) {
-        setSaveError('Failed to save trip. Please try again.');
-        setTripStarted(false);
-      } finally {
-        setSaving(false);
-      }
-    } else {
+    if (!source.trim() || !destination.trim()) {
       alert('Please enter both source and destination');
+      return;
+    }
+    setTripStarted(true);
+    setSaving(true);
+    setSaveError('');
+    try {
+      const tripData = {
+        driverId: user.uid,
+        driverName: userProfile?.username || user.displayName || '',
+        driverEmail: user.email,
+        driverPhone: userProfile?.phoneNumber || '',
+        driverPhoto: user.photoURL || '',
+        source: normalizePlace(source),
+        destination: normalizePlace(destination),
+        distance,
+        distanceInKm,
+        fare: parseFloat(fare),
+        ratePerKm: RATE_PER_KM,
+        additionalExpenses: ADDITIONAL_EXPENSES,
+        createdAt: serverTimestamp(),
+        active: true,
+        status: 'available',
+      };
+      console.log('Creating trip:', tripData);
+      await addDoc(collection(db, 'trips'), tripData);
+      toast.success('Trip created! Buddies can now find your ride.');
+    } catch (err) {
+      setSaveError('Failed to save trip. Please try again.');
+      setTripStarted(false);
+      console.error('Error creating trip:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAcceptBooking = async (tripId) => {
+    try {
+      console.log('Accepting booking for trip:', tripId);
+      await updateDoc(doc(db, 'trips', tripId), {
+        status: 'accepted',
+        active: false,
+      });
+      setPendingBookings(prev => prev.filter(trip => trip.id !== tripId));
+      toast.success('Booking accepted!');
+    } catch (err) {
+      console.error('Error accepting booking:', err);
+      toast.error('Failed to accept booking.');
     }
   };
 
@@ -501,6 +541,33 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile }) {
           Sign Out
         </button>
       </div>
+
+      {/* Pending Bookings Section */}
+      {pendingBookings.length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-lg font-bold text-green-800 mb-2">Pending Bookings</h3>
+          <ul className="space-y-3">
+            {pendingBookings.map(trip => (
+              <li key={trip.id} className="p-3 bg-green-50 rounded-xl border border-green-200">
+                <div className="mb-2 font-semibold text-gray-800">Buddy: {trip.buddyName}</div>
+                <div className="text-xs text-gray-700 mb-2">
+                  <div>📧 {trip.buddyEmail}</div>
+                  <div>📞 {trip.buddyPhone}</div>
+                  <div>From: {trip.source || <span className="text-red-500">Not set</span>}</div>
+                  <div>To: {trip.destination || <span className="text-red-500">Not set</span>}</div>
+                  <div>Fare: ₹{trip.fare ?? <span className="text-red-500">Not set</span>}</div>
+                </div>
+                <button
+                  onClick={() => handleAcceptBooking(trip.id)}
+                  className="w-full bg-gradient-to-r from-green-500 to-green-700 text-white py-2 rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm"
+                >
+                  Accept Booking
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -560,15 +627,19 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
       setSearchError('');
       setAvailableTrips([]);
       try {
+        const normSource = normalizePlace(source);
+        const normDest = normalizePlace(destination);
+        console.log('Searching for trips with:', normSource, normDest);
         const q = query(
           collection(db, 'trips'),
-          where('source', '==', source),
-          where('destination', '==', destination),
-          where('active', '==', true)
+          where('source', '==', normSource),
+          where('destination', '==', normDest),
+          where('active', '==', true),
+          where('status', '==', 'available')
         );
         const querySnapshot = await getDocs(q);
-        const trips = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
+        let trips = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        console.log('Fetched trips:', trips);
         // Sort trips by pilot ratings (highest first)
         const tripsWithRatings = await Promise.all(
           trips.map(async (trip) => {
@@ -579,11 +650,9 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
               );
               const ratingsSnapshot = await getDocs(ratingsQuery);
               const ratings = ratingsSnapshot.docs.map(doc => doc.data().rating);
-              
               const averageRating = ratings.length > 0 
                 ? (ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length).toFixed(1)
                 : 0;
-              
               return {
                 ...trip,
                 averageRating: parseFloat(averageRating),
@@ -595,18 +664,20 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
             }
           })
         );
-        
-        // Sort by average rating (highest first), then by rating count
         tripsWithRatings.sort((a, b) => {
           if (b.averageRating !== a.averageRating) {
             return b.averageRating - a.averageRating;
           }
           return b.ratingCount - a.ratingCount;
         });
-        
         setAvailableTrips(tripsWithRatings);
+        console.log('Trips with ratings:', tripsWithRatings);
+        if (tripsWithRatings.length === 0) {
+          toast('No pilots found for this route.', { icon: '🕵️' });
+        }
       } catch (err) {
         setSearchError('Failed to search for trips. Please try again.');
+        console.error('Error searching for trips:', err);
       } finally {
         setSearching(false);
       }
@@ -621,8 +692,6 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
 
   const confirmBooking = async () => {
     if (!bookingTrip) return;
-    
-    // Show payment modal instead of direct booking
     setShowPayment(true);
   };
 
@@ -631,14 +700,23 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
       alert('Please select payment method and enter UPI ID');
       return;
     }
-
     setPaymentLoading(true);
     try {
-      // Simulate payment processing
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Create booking record with payment details
-      await addDoc(collection(db, 'bookings'), {
+      const updateData = {
+        status: 'pending',
+        buddyId: user.uid,
+        buddyName: userProfile?.username || user.displayName || '',
+        buddyEmail: user.email,
+        buddyPhone: userProfile?.phoneNumber || '',
+        paymentMethod: paymentMethod,
+        upiId: upiId,
+        paymentStatus: 'completed',
+      };
+      console.log('Updating trip for booking:', bookingTrip.id, updateData);
+      await updateDoc(doc(db, 'trips', bookingTrip.id), updateData);
+      // Create booking record for history
+      const bookingData = {
         tripId: bookingTrip.id,
         pilotId: bookingTrip.driverId,
         pilotName: bookingTrip.driverName,
@@ -655,28 +733,20 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
         paymentMethod: paymentMethod,
         upiId: upiId,
         paymentStatus: 'completed',
-        status: 'confirmed',
+        status: 'pending',
         createdAt: serverTimestamp(),
-      });
-
-      // Update trip status to booked
-      await updateDoc(doc(db, 'trips', bookingTrip.id), {
-        active: false,
-        bookedBy: user.uid,
-        bookedAt: serverTimestamp(),
-      });
-
-      // Remove the booked trip from available trips
+      };
+      console.log('Creating booking record:', bookingData);
+      await addDoc(collection(db, 'bookings'), bookingData);
       setAvailableTrips(prev => prev.filter(trip => trip.id !== bookingTrip.id));
       setBookingTrip(null);
       setShowPayment(false);
       setPaymentMethod('');
       setUpiId('');
-      
-      alert('Payment successful! Ride booked. Check your profile for booking details.');
+      toast.success('Booking request sent! Waiting for pilot to accept.');
     } catch (err) {
-      console.error('Error processing payment:', err);
       alert('Payment failed. Please try again.');
+      console.error('Error processing payment:', err);
     } finally {
       setPaymentLoading(false);
     }
@@ -788,9 +858,9 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
                   <div className="text-gray-600 text-xs sm:text-sm mb-3 space-y-1">
                     <div className="truncate">📧 {trip.driverEmail}</div>
                     {trip.driverPhone && <div className="truncate">📞 {trip.driverPhone}</div>}
-                    <div className="mt-2">📍 From: {trip.source}</div>
-                    <div>🎯 To: {trip.destination}</div>
-                    <div className="text-green-700 font-semibold">💰 Fare: ₹{trip.fare}</div>
+                    <div className="mt-2">📍 From: {trip.source || <span className="text-red-500">Not set</span>}</div>
+                    <div>🎯 To: {trip.destination || <span className="text-red-500">Not set</span>}</div>
+                    <div className="text-green-700 font-semibold">💰 Fare: ₹{trip.fare ?? <span className="text-red-500">Not set</span>}</div>
                   </div>
                   <button
                     onClick={() => handleBookRide(trip)}
@@ -836,9 +906,9 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
               <div className="p-3 sm:p-4 bg-yellow-50 rounded-lg sm:rounded-xl border border-yellow-200">
                 <h4 className="font-semibold text-yellow-800 mb-2 text-sm sm:text-base">Trip Details:</h4>
                 <div className="text-xs sm:text-sm text-gray-700 space-y-1">
-                  <div>📍 From: {bookingTrip.source}</div>
-                  <div>🎯 To: {bookingTrip.destination}</div>
-                  <div>💰 Fare: ₹{bookingTrip.fare}</div>
+                  <div>📍 From: {bookingTrip.source || <span className="text-red-500">Not set</span>}</div>
+                  <div>🎯 To: {bookingTrip.destination || <span className="text-red-500">Not set</span>}</div>
+                  <div>💰 Fare: ₹{bookingTrip.fare ?? <span className="text-red-500">Not set</span>}</div>
                 </div>
               </div>
             </div>
@@ -874,8 +944,8 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
                 <div className="text-sm text-gray-600">Amount to be paid</div>
               </div>
               <div className="text-xs sm:text-sm text-gray-700 space-y-1">
-                <div>📍 From: {bookingTrip?.source}</div>
-                <div>🎯 To: {bookingTrip?.destination}</div>
+                <div>📍 From: {bookingTrip?.source || <span className="text-red-500">Not set</span>}</div>
+                <div>🎯 To: {bookingTrip?.destination || <span className="text-red-500">Not set</span>}</div>
                 <div>👤 Pilot: {bookingTrip?.driverName}</div>
               </div>
             </div>
@@ -1312,6 +1382,7 @@ function App() {
 export default function AppWithRouter() {
   return (
     <Router>
+      <Toaster />
       <App />
     </Router>
   );
