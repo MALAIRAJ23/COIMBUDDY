@@ -295,16 +295,28 @@ function UserProfilePage({ user, userProfile, onBack, onSignOut }) {
 
           {/* Rides Travelled This Month (Buddy) */}
           {userProfile && buddyRidesThisMonth.length > 0 && (
-            <div className="mb-8">
-              <h3 className="text-xl font-bold text-gray-800 mb-4">Rides Travelled This Month</h3>
-              <ul className="space-y-3">
+            <div className="mb-10">
+              <div className="flex items-center gap-2 mb-4 px-4 py-2 rounded-xl bg-gradient-to-r from-green-400 to-blue-400 shadow-md border border-green-200">
+                <span className="text-2xl">🚗</span>
+                <h3 className="text-xl font-extrabold text-white tracking-wide">Rides Travelled This Month</h3>
+              </div>
+              <ul className="grid sm:grid-cols-2 gap-6">
                 {buddyRidesThisMonth.map(ride => (
-                  <li key={ride.id} className="p-4 bg-green-50 rounded-xl border border-green-200">
-                    <div className="font-semibold text-gray-800 mb-1">From: {ride.source}</div>
-                    <div className="font-semibold text-gray-800 mb-1">To: {ride.destination}</div>
-                    <div className="text-xs text-gray-700">Date: {ride.createdAt?.toDate?.() ? ride.createdAt.toDate().toLocaleDateString() : 'Recently'}</div>
-                    <div className="text-xs text-gray-700">Fare: ₹{ride.fare}</div>
-                    <div className="text-xs text-gray-700">Pilot: {ride.pilotName}</div>
+                  <li key={ride.id} className="group p-5 bg-white rounded-2xl border border-gray-200 shadow-lg hover:shadow-2xl transition-shadow duration-200 flex flex-col gap-2 hover:border-blue-400">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-green-600 text-lg">🟢</span>
+                      <span className="font-semibold text-gray-800 text-base">{ride.source}</span>
+                      <span className="mx-2 text-gray-400">→</span>
+                      <span className="font-semibold text-gray-800 text-base">{ride.destination}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <span className="inline-flex items-center gap-1"><span className="text-blue-500">📅</span>{ride.createdAt?.toDate?.() ? ride.createdAt.toDate().toLocaleDateString() : 'Recently'}</span>
+                      <span className="inline-flex items-center gap-1"><span className="text-yellow-500">💰</span>₹{ride.fare}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
+                      <span className="inline-flex items-center gap-1"><span className="text-purple-500">👤</span>Pilot:</span>
+                      <span className="font-medium text-gray-700 group-hover:text-blue-700 transition">{ride.pilotName}</span>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -312,79 +324,43 @@ function UserProfilePage({ user, userProfile, onBack, onSignOut }) {
           )}
 
           {/* Booking History */}
-          <div>
-            <h3 className="text-xl font-bold text-gray-800 mb-4">Booking History</h3>
+          <div className="mb-10">
+            <div className="flex items-center gap-2 mb-4 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-400 to-purple-400 shadow-md border border-blue-200">
+              <span className="text-2xl">📚</span>
+              <h3 className="text-xl font-extrabold text-white tracking-wide">Booking History</h3>
+            </div>
             {loading ? (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
                 <p className="text-gray-600">Loading bookings...</p>
               </div>
             ) : bookings.length > 0 ? (
-              <div className="space-y-4">
+              <ul className="grid sm:grid-cols-2 gap-6">
                 {bookings.map((booking) => (
-                  <div key={booking.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <div className="font-semibold text-gray-800 mb-2">
-                          {booking.pilotId === user.uid ? '🚗 You drove' : '🚶 You traveled'}
-                        </div>
-                        <div className="text-xs text-gray-700 space-y-1">
-                          <div>📍 From: {booking.source || <span className="text-red-500">Not set</span>}</div>
-                          <div>🎯 To: {booking.destination || <span className="text-red-500">Not set</span>}</div>
-                          <div>💰 Fare: ₹{booking.fare ?? <span className="text-red-500">Not set</span>}</div>
-                          <div>📅 {booking.createdAt?.toDate?.() ? 
-                            booking.createdAt.toDate().toLocaleDateString() : 
-                            'Recently'
-                          }</div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          booking.status === 'confirmed' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {booking.status}
-                        </span>
-                      </div>
+                  <li key={booking.id} className="group p-5 bg-white rounded-2xl border border-gray-200 shadow-lg hover:shadow-2xl transition-shadow duration-200 flex flex-col gap-2 hover:border-purple-400">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-blue-600 text-lg">{booking.pilotId === user.uid ? '🚗' : '🚶'}</span>
+                      <span className="font-semibold text-gray-800 text-base">{booking.pilotId === user.uid ? 'You drove' : 'You travelled'}</span>
+                      <span className="ml-auto px-2 py-1 rounded-full text-xs font-medium "
+                        style={{ background: booking.status === 'confirmed' ? '#d1fae5' : '#e5e7eb', color: booking.status === 'confirmed' ? '#065f46' : '#374151' }}>
+                        {booking.status}
+                      </span>
                     </div>
-                    
-                    {/* Contact Details */}
-                    {booking.pilotId === user.uid ? (
-                      <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                        <div className="text-sm font-medium text-blue-800 mb-1">Buddy Details:</div>
-                        <div className="text-xs text-gray-700">
-                          <div>👤 {booking.buddyName}</div>
-                          <div>📧 {booking.buddyEmail}</div>
-                          <div>📞 {booking.buddyPhone || 'Not provided'}</div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="p-3 bg-green-50 rounded-lg border border-green-200">
-                        <div className="text-sm font-medium text-green-800 mb-1">Pilot Details:</div>
-                        <div className="text-xs text-gray-700">
-                          <div>👤 {booking.pilotName}</div>
-                          <div>📧 {booking.pilotEmail}</div>
-                          <div>📞 {booking.pilotPhone}</div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Payment Information */}
-                    {booking.paymentMethod && (
-                      <div className="p-3 bg-purple-50 rounded-lg border border-purple-200 mt-2">
-                        <div className="text-sm font-medium text-purple-800 mb-1">Payment Details:</div>
-                        <div className="text-xs text-gray-700">
-                          <div>💳 Method: {booking.paymentMethod.toUpperCase()}</div>
-                          <div>🆔 UPI ID: {booking.upiId}</div>
-                          <div>💰 Amount: ₹{booking.fare}</div>
-                          <div className={`font-medium ${booking.paymentStatus === 'completed' ? 'text-green-600' : 'text-yellow-600'}`}>
-                            Status: {booking.paymentStatus}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <span className="inline-flex items-center gap-1"><span className="text-green-500">📍</span>{booking.source}</span>
+                      <span className="inline-flex items-center gap-1"><span className="text-pink-500">🎯</span>{booking.destination}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <span className="inline-flex items-center gap-1"><span className="text-blue-500">📅</span>{booking.createdAt?.toDate?.() ? booking.createdAt.toDate().toLocaleDateString() : 'Recently'}</span>
+                      <span className="inline-flex items-center gap-1"><span className="text-yellow-500">💰</span>₹{booking.fare}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
+                      <span className="inline-flex items-center gap-1"><span className="text-purple-500">👤</span>{booking.pilotId === user.uid ? 'Buddy:' : 'Pilot:'}</span>
+                      <span className="font-medium text-gray-700 group-hover:text-purple-700 transition">{booking.pilotId === user.uid ? booking.buddyName : booking.pilotName}</span>
+                    </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             ) : (
               <div className="text-center py-8 bg-gray-50 rounded-xl border border-gray-200">
                 <div className="text-4xl mb-4">🚗</div>
@@ -603,22 +579,29 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile }) {
 
       {/* Pending Bookings Section */}
       {pendingBookings.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-lg font-bold text-green-800 mb-2">Pending Bookings</h3>
-          <ul className="space-y-3">
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-4 px-4 py-2 rounded-xl bg-gradient-to-r from-green-400 to-yellow-400 shadow-md border border-green-200">
+            <span className="text-2xl">⏳</span>
+            <h3 className="text-lg font-extrabold text-white tracking-wide">Pending Bookings</h3>
+          </div>
+          <ul className="grid sm:grid-cols-2 gap-6">
             {pendingBookings.map(trip => (
-              <li key={trip.id} className="p-3 bg-green-50 rounded-xl border border-green-200">
-                <div className="mb-2 font-semibold text-gray-800">Buddy: {trip.buddyName}</div>
-                <div className="text-xs text-gray-700 mb-2">
-                  <div>📧 {trip.buddyEmail}</div>
-                  <div>📞 {trip.buddyPhone}</div>
-                  <div>From: {trip.source || <span className="text-red-500">Not set</span>}</div>
-                  <div>To: {trip.destination || <span className="text-red-500">Not set</span>}</div>
-                  <div>Fare: ₹{trip.fare ?? <span className="text-red-500">Not set</span>}</div>
+              <li key={trip.id} className="group p-5 bg-white rounded-2xl border border-gray-200 shadow-lg hover:shadow-2xl transition-shadow duration-200 flex flex-col gap-2 hover:border-yellow-400">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-green-600 text-lg">👤</span>
+                  <span className="font-semibold text-gray-800 text-base">{trip.buddyName}</span>
+                  <span className="ml-auto px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Pending</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <span className="inline-flex items-center gap-1"><span className="text-green-500">📍</span>{trip.source}</span>
+                  <span className="inline-flex items-center gap-1"><span className="text-pink-500">🎯</span>{trip.destination}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <span className="inline-flex items-center gap-1"><span className="text-yellow-500">💰</span>₹{trip.fare}</span>
                 </div>
                 <button
                   onClick={() => handleAcceptBooking(trip.id)}
-                  className="w-full bg-gradient-to-r from-green-500 to-green-700 text-white py-2 rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm"
+                  className="w-full bg-gradient-to-r from-green-500 to-green-700 text-white py-2 rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm mt-2"
                 >
                   Accept Booking
                 </button>
@@ -630,25 +613,32 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile }) {
 
       {/* Accepted Bookings Section */}
       {acceptedBookings.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-lg font-bold text-blue-800 mb-2">Accepted Bookings (Ready for Payment)</h3>
-          <ul className="space-y-3">
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-4 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-400 to-green-400 shadow-md border border-blue-200">
+            <span className="text-2xl">✅</span>
+            <h3 className="text-lg font-extrabold text-white tracking-wide">Accepted Bookings (Ready for Payment)</h3>
+          </div>
+          <ul className="grid sm:grid-cols-2 gap-6">
             {acceptedBookings.map(trip => (
-              <li key={trip.id} className="p-3 bg-blue-50 rounded-xl border border-blue-200">
-                <div className="mb-2 font-semibold text-gray-800">Buddy: {trip.buddyName}</div>
-                <div className="text-xs text-gray-700 mb-2">
-                  <div>📧 {trip.buddyEmail}</div>
-                  <div>📞 {trip.buddyPhone}</div>
-                  <div>From: {trip.source}</div>
-                  <div>To: {trip.destination}</div>
-                  <div>Fare: ₹{trip.fare}</div>
+              <li key={trip.id} className="group p-5 bg-white rounded-2xl border border-gray-200 shadow-lg hover:shadow-2xl transition-shadow duration-200 flex flex-col gap-2 hover:border-green-400">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-green-600 text-lg">👤</span>
+                  <span className="font-semibold text-gray-800 text-base">{trip.buddyName}</span>
+                  <span className={`ml-auto px-2 py-1 rounded-full text-xs font-medium ${trip.paymentInitiated ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{trip.paymentInitiated ? 'Payment Initiated' : 'Accepted'}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <span className="inline-flex items-center gap-1"><span className="text-green-500">📍</span>{trip.source}</span>
+                  <span className="inline-flex items-center gap-1"><span className="text-pink-500">🎯</span>{trip.destination}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <span className="inline-flex items-center gap-1"><span className="text-yellow-500">💰</span>₹{trip.fare}</span>
                 </div>
                 {trip.paymentInitiated ? (
                   <div className="text-green-700 font-semibold">Payment Initiated</div>
                 ) : (
                   <button
                     onClick={() => handleInitiatePayment(trip.id)}
-                    className="w-full bg-gradient-to-r from-green-500 to-green-700 text-white py-2 rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm"
+                    className="w-full bg-gradient-to-r from-green-500 to-green-700 text-white py-2 rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm mt-2"
                   >
                     Initiate Payment
                   </button>
@@ -873,15 +863,16 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
 
   const handleShowBuddyPayment = () => setShowBuddyPayment(true);
   const handleBuddyPayment = async () => {
-    if (!buddyPaymentMethod) {
-      alert('Please select a payment method');
+    if (!upiId.trim()) {
+      alert('Please enter the pilot\'s UPI ID');
       return;
     }
     setBuddyPaymentLoading(true);
     try {
       await updateDoc(doc(db, 'trips', myAcceptedTrip.id), {
         paymentStatus: 'completed',
-        paymentMethod: buddyPaymentMethod
+        paymentMethod: 'upi',
+        upiId: upiId
       });
       setBuddyPaymentDone(true);
       toast.success('Payment completed!');
@@ -1149,18 +1140,17 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
       {showBuddyPayment && myAcceptedTrip && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
-            <h3 className="text-lg font-bold text-gray-800 mb-4">Complete Payment</h3>
+            <h3 className="text-lg font-bold text-gray-800 mb-4">Pay with UPI</h3>
             <div className="mb-4">
-              <label className="block text-gray-700 font-medium mb-2">Select Payment Method</label>
-              <select
-                value={buddyPaymentMethod}
-                onChange={e => setBuddyPaymentMethod(e.target.value)}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400 text-sm"
-              >
-                <option value="">Choose Payment Method</option>
-                <option value="cash">Cash</option>
-                <option value="upi">UPI</option>
-              </select>
+              <label className="block text-gray-700 font-medium mb-2">Pilot's UPI ID</label>
+              <input
+                type="text"
+                placeholder="Enter pilot's UPI ID (e.g., pilot@upi)"
+                value={upiId}
+                onChange={e => setUpiId(e.target.value)}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+              />
+              <p className="text-xs text-gray-500 mt-1">Ask the pilot for their UPI ID</p>
             </div>
             <div className="flex gap-2">
               <button
@@ -1173,7 +1163,7 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
               <button
                 onClick={handleBuddyPayment}
                 className="flex-1 py-2 bg-gradient-to-r from-green-500 to-green-700 text-white rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm"
-                disabled={buddyPaymentLoading || !buddyPaymentMethod}
+                disabled={buddyPaymentLoading || !upiId.trim()}
               >
                 {buddyPaymentLoading ? 'Processing...' : 'Confirm Payment'}
               </button>
@@ -1184,36 +1174,41 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
 
       {/* My Accepted Trip */}
       {myAcceptedTrip && (
-        <div className="mb-6 p-4 bg-green-50 rounded-xl border border-green-200">
-          <h3 className="text-lg font-bold text-green-800 mb-2">Your Current Ride</h3>
-          <div className="flex items-center gap-4 mb-2">
+        <div className="mb-10 p-6 bg-gradient-to-br from-green-100 to-blue-100 rounded-2xl border border-green-200 shadow-lg">
+          <div className="flex items-center gap-4 mb-4">
             {myAcceptedTrip.driverPhoto ? (
-              <img src={myAcceptedTrip.driverPhoto} alt="Pilot" className="w-12 h-12 rounded-full border-2 border-green-400" />
+              <img src={myAcceptedTrip.driverPhoto} alt="Pilot" className="w-16 h-16 rounded-full border-4 border-green-400 shadow" />
             ) : (
-              <UserCircle2 className="w-12 h-12 text-green-400" />
+              <UserCircle2 className="w-16 h-16 text-green-400" />
             )}
             <div>
-              <div className="font-semibold text-gray-800">{myAcceptedTrip.driverName}</div>
+              <div className="font-bold text-lg text-gray-800">{myAcceptedTrip.driverName}</div>
               <div className="text-xs text-gray-600">📧 {myAcceptedTrip.driverEmail}</div>
               <div className="text-xs text-gray-600">📞 {myAcceptedTrip.driverPhone}</div>
             </div>
           </div>
-          <div className="text-xs text-gray-700 mb-2">
-            <div>From: {myAcceptedTrip.source}</div>
-            <div>To: {myAcceptedTrip.destination}</div>
-            <div>Fare: ₹{myAcceptedTrip.fare}</div>
+          <div className="flex items-center gap-4 text-sm text-gray-700 mb-2">
+            <span className="inline-flex items-center gap-1"><span className="text-green-500">📍</span>{myAcceptedTrip.source}</span>
+            <span className="inline-flex items-center gap-1"><span className="text-pink-500">🎯</span>{myAcceptedTrip.destination}</span>
           </div>
+          {/* Only show fare and payment after paymentInitiated */}
           {myAcceptedTrip.paymentStatus === 'completed' || buddyPaymentDone ? (
-            <div className="text-green-700 font-semibold">Payment Completed</div>
+            <div className="text-green-700 font-semibold mt-2">Payment Completed</div>
           ) : myAcceptedTrip.paymentInitiated ? (
-            <button
-              onClick={handleShowBuddyPayment}
-              className="w-full bg-gradient-to-r from-green-500 to-green-700 text-white py-2 rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm mt-2"
-            >
-              Pay Now
-            </button>
+            <>
+              <div className="flex items-center gap-2 text-lg font-bold text-green-800 mb-2">
+                <span className="text-yellow-500">💰</span>
+                <span>Fare: ₹{myAcceptedTrip.fare}</span>
+              </div>
+              <button
+                onClick={handleShowBuddyPayment}
+                className="w-full bg-gradient-to-r from-green-500 to-green-700 text-white py-2 rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm mt-2"
+              >
+                Pay Now
+              </button>
+            </>
           ) : (
-            <div className="text-yellow-700 font-semibold">Waiting for pilot to initiate payment...</div>
+            <div className="text-yellow-700 font-semibold mt-2">Waiting for pilot to initiate payment...</div>
           )}
         </div>
       )}
