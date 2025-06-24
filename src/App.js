@@ -1,25 +1,1318 @@
-import logo from './logo.svg';
-import './App.css';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Car, UserCircle2 } from 'lucide-react';
+import { auth, db } from './firebase';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  useNavigate
+} from 'react-router-dom';
+import { GoogleMap, useJsApiLoader, DirectionsRenderer } from '@react-google-maps/api';
+import { collection, addDoc, query, where, getDocs, serverTimestamp, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
-function App() {
+const GOOGLE_MAPS_API_KEY = 'AIzaSyB0biE37HC3gkUvKIB_ZfzIk30ZdRARZEM';
+const COIMBATORE_CENTER = { lat: 11.0168, lng: 76.9558 };
+const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' };
+const RATE_PER_KM = 6.80; // ₹6.80 per kilometer
+const ADDITIONAL_EXPENSES = 20; // ₹20 additional expenses
+
+function UserProfile({ user, userProfile }) {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+    <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-6 p-3 sm:p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl sm:rounded-2xl shadow border border-gray-200">
+      {user.photoURL ? (
+        <img src={user.photoURL} alt="Profile" className="w-12 h-12 sm:w-14 sm:h-14 rounded-full border-2 border-blue-400 flex-shrink-0" />
+      ) : (
+        <UserCircle2 className="w-12 h-12 sm:w-14 sm:h-14 text-blue-400 flex-shrink-0" />
+      )}
+      <div className="text-left min-w-0 flex-1">
+        <div className="font-bold text-base sm:text-lg text-gray-800 truncate">{userProfile?.username || user.displayName || 'User'}</div>
+        <div className="text-gray-500 text-xs sm:text-sm truncate">{user.email}</div>
+        {userProfile?.phoneNumber && (
+          <div className="text-gray-500 text-xs sm:text-sm truncate">📞 {userProfile.phoneNumber}</div>
+        )}
+      </div>
     </div>
   );
 }
 
-export default App;
+function MapWithRoute({ source, destination }) {
+  const { isLoaded } = useJsApiLoader({
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+    libraries: ['places'],
+  });
+  const [directions, setDirections] = useState(null);
+
+  useEffect(() => {
+    setDirections(null);
+  }, [source, destination]);
+
+  useEffect(() => {
+    if (isLoaded && source && destination) {
+      const service = new window.google.maps.DirectionsService();
+      service.route(
+        {
+          origin: source,
+          destination: destination,
+          travelMode: window.google.maps.TravelMode.DRIVING,
+        },
+        (result, status) => {
+          if (status === 'OK') {
+            setDirections(result);
+          } else {
+            setDirections(null);
+          }
+        }
+      );
+    }
+  }, [isLoaded, source, destination]);
+
+  return (
+    <div className="w-full h-48 sm:h-64 rounded-xl sm:rounded-2xl overflow-hidden border border-dashed border-green-300 mb-4">
+      {isLoaded ? (
+        <GoogleMap
+          mapContainerStyle={MAP_CONTAINER_STYLE}
+          center={COIMBATORE_CENTER}
+          zoom={12}
+        >
+          {directions && <DirectionsRenderer directions={directions} />}
+        </GoogleMap>
+      ) : (
+        <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm sm:text-base">Loading map...</div>
+      )}
+    </div>
+  );
+}
+
+function RoleSelection({ onSelect }) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-700 to-purple-900 p-4">
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl text-center border border-blue-200">
+        <Car className="w-12 h-12 sm:w-14 sm:h-14 text-blue-700 mx-auto mb-4" />
+        <h2 className="text-2xl sm:text-3xl font-extrabold mb-6 text-gray-800">Choose Your Role</h2>
+        <button
+          className="w-full bg-gradient-to-r from-green-400 to-green-600 text-white py-3 sm:py-3 rounded-xl font-semibold mb-4 shadow-lg hover:from-green-500 hover:to-green-700 transition text-base sm:text-lg"
+          onClick={() => onSelect('pilot')}
+        >
+          I am a Pilot
+        </button>
+        <button
+          className="w-full bg-gradient-to-r from-blue-400 to-blue-600 text-white py-3 sm:py-3 rounded-xl font-semibold shadow-lg hover:from-blue-500 hover:to-blue-700 transition text-base sm:text-lg"
+          onClick={() => onSelect('buddy')}
+        >
+          I am a Buddy
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function UserProfilePage({ user, userProfile, onBack, onSignOut }) {
+  const [ratings, setRatings] = useState([]);
+  const [averageRating, setAverageRating] = useState(0);
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch ratings for this user
+        const ratingsQuery = query(
+          collection(db, 'ratings'),
+          where('ratedUserId', '==', user.uid)
+        );
+        const ratingsSnapshot = await getDocs(ratingsQuery);
+        const ratingsData = ratingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setRatings(ratingsData);
+        
+        // Calculate average rating
+        if (ratingsData.length > 0) {
+          const total = ratingsData.reduce((sum, rating) => sum + rating.rating, 0);
+          setAverageRating((total / ratingsData.length).toFixed(1));
+        }
+
+        // Fetch bookings
+        const bookingsQuery = query(
+          collection(db, 'bookings'),
+          where('pilotId', '==', user.uid)
+        );
+        const bookingsSnapshot = await getDocs(bookingsQuery);
+        const pilotBookings = bookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        const buddyBookingsQuery = query(
+          collection(db, 'bookings'),
+          where('buddyId', '==', user.uid)
+        );
+        const buddyBookingsSnapshot = await getDocs(buddyBookingsQuery);
+        const buddyBookings = buddyBookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        setBookings([...pilotBookings, ...buddyBookings]);
+      } catch (err) {
+        console.error('Error fetching data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [user.uid]);
+
+  const renderStars = (rating) => {
+    const stars = [];
+    for (let i = 1; i <= 5; i++) {
+      stars.push(
+        <span key={i} className={i <= rating ? 'text-yellow-400' : 'text-gray-300'}>
+          ★
+        </span>
+      );
+    }
+    return stars;
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 p-4">
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white rounded-3xl p-8 shadow-2xl">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-8">
+            <button
+              onClick={onBack}
+              className="text-blue-600 hover:text-blue-800 font-medium"
+            >
+              ← Back
+            </button>
+            <h1 className="text-2xl font-bold text-gray-800">Profile</h1>
+            <button
+              onClick={onSignOut}
+              className="text-red-600 hover:text-red-800 font-medium"
+            >
+              Sign Out
+            </button>
+          </div>
+
+          {/* Profile Info */}
+          <div className="mb-8">
+            <div className="flex items-center gap-6 mb-6 p-6 bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl shadow border border-gray-200">
+              {user.photoURL ? (
+                <img src={user.photoURL} alt="Profile" className="w-20 h-20 rounded-full border-4 border-blue-400" />
+              ) : (
+                <UserCircle2 className="w-20 h-20 text-blue-400" />
+              )}
+              <div className="flex-1">
+                <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                  {userProfile?.username || user.displayName || 'User'}
+                </h2>
+                <div className="text-gray-600 mb-1">📧 {user.email}</div>
+                {userProfile?.phoneNumber && (
+                  <div className="text-gray-600 mb-1">📞 {userProfile.phoneNumber}</div>
+                )}
+                <div className="text-gray-600">👤 {userProfile?.username ? 'Pilot' : 'Buddy'}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Ratings Section */}
+          <div className="mb-8">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Customer Ratings</h3>
+            
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Loading ratings...</p>
+              </div>
+            ) : ratings.length > 0 ? (
+              <div>
+                {/* Average Rating */}
+                <div className="mb-6 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
+                  <div className="flex items-center gap-4">
+                    <div className="text-3xl font-bold text-yellow-800">{averageRating}</div>
+                    <div>
+                      <div className="flex text-2xl mb-1">
+                        {renderStars(parseFloat(averageRating))}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        {ratings.length} {ratings.length === 1 ? 'review' : 'reviews'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Individual Ratings */}
+                <div className="space-y-4">
+                  {ratings.map((rating) => (
+                    <div key={rating.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="flex text-lg">
+                            {renderStars(rating.rating)}
+                          </div>
+                          <span className="text-sm text-gray-500">
+                            by {rating.raterName || 'Anonymous'}
+                          </span>
+                        </div>
+                        <span className="text-sm text-gray-500">
+                          {rating.createdAt?.toDate?.() ? 
+                            rating.createdAt.toDate().toLocaleDateString() : 
+                            'Recently'
+                          }
+                        </span>
+                      </div>
+                      {rating.comment && (
+                        <p className="text-gray-700 text-sm">{rating.comment}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 bg-gray-50 rounded-xl border border-gray-200">
+                <div className="text-4xl mb-4">⭐</div>
+                <p className="text-gray-600">No ratings yet</p>
+                <p className="text-sm text-gray-500">Complete trips to receive ratings</p>
+              </div>
+            )}
+          </div>
+
+          {/* Booking History */}
+          <div>
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Booking History</h3>
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Loading bookings...</p>
+              </div>
+            ) : bookings.length > 0 ? (
+              <div className="space-y-4">
+                {bookings.map((booking) => (
+                  <div key={booking.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <div className="font-semibold text-gray-800 mb-2">
+                          {booking.pilotId === user.uid ? '🚗 You drove' : '🚶 You traveled'}
+                        </div>
+                        <div className="text-sm text-gray-600 space-y-1">
+                          <div>📍 From: {booking.source}</div>
+                          <div>🎯 To: {booking.destination}</div>
+                          <div>💰 Fare: ₹{booking.fare}</div>
+                          <div>📅 {booking.createdAt?.toDate?.() ? 
+                            booking.createdAt.toDate().toLocaleDateString() : 
+                            'Recently'
+                          }</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          booking.status === 'confirmed' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {booking.status}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Contact Details */}
+                    {booking.pilotId === user.uid ? (
+                      <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                        <div className="text-sm font-medium text-blue-800 mb-1">Buddy Details:</div>
+                        <div className="text-xs text-gray-700">
+                          <div>👤 {booking.buddyName}</div>
+                          <div>📧 {booking.buddyEmail}</div>
+                          <div>📞 {booking.buddyPhone || 'Not provided'}</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+                        <div className="text-sm font-medium text-green-800 mb-1">Pilot Details:</div>
+                        <div className="text-xs text-gray-700">
+                          <div>👤 {booking.pilotName}</div>
+                          <div>📧 {booking.pilotEmail}</div>
+                          <div>📞 {booking.pilotPhone}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Payment Information */}
+                    {booking.paymentMethod && (
+                      <div className="p-3 bg-purple-50 rounded-lg border border-purple-200 mt-2">
+                        <div className="text-sm font-medium text-purple-800 mb-1">Payment Details:</div>
+                        <div className="text-xs text-gray-700">
+                          <div>💳 Method: {booking.paymentMethod.toUpperCase()}</div>
+                          <div>🆔 UPI ID: {booking.upiId}</div>
+                          <div>💰 Amount: ₹{booking.fare}</div>
+                          <div className={`font-medium ${booking.paymentStatus === 'completed' ? 'text-green-600' : 'text-yellow-600'}`}>
+                            Status: {booking.paymentStatus}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 bg-gray-50 rounded-xl border border-gray-200">
+                <div className="text-4xl mb-4">🚗</div>
+                <p className="text-gray-600">No bookings yet</p>
+                <p className="text-sm text-gray-500">Book rides or offer rides to see history</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PilotDashboard({ user, userProfile, onSignOut, onShowProfile }) {
+  const [source, setSource] = useState('');
+  const [destination, setDestination] = useState('');
+  const [tripStarted, setTripStarted] = useState(false);
+  const [distance, setDistance] = useState(null);
+  const [distanceInKm, setDistanceInKm] = useState(null);
+  const [fare, setFare] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  // Calculate distance and fare using Google Maps Directions API
+  useEffect(() => {
+    setDistance(null);
+    setDistanceInKm(null);
+    setFare(null);
+    if (window.google && source && destination) {
+      const service = new window.google.maps.DirectionsService();
+      service.route(
+        {
+          origin: source,
+          destination: destination,
+          travelMode: window.google.maps.TravelMode.DRIVING,
+        },
+        (result, status) => {
+          if (status === 'OK') {
+            const route = result.routes[0];
+            const leg = route.legs[0];
+            setDistance(leg.distance.text);
+            
+            // Extract distance in kilometers for fare calculation
+            const distanceText = leg.distance.text;
+            const distanceValue = parseFloat(distanceText.replace(' km', '').replace(',', ''));
+            setDistanceInKm(distanceValue);
+            
+            // Calculate fare: (distance * rate) + additional expenses
+            const calculatedFare = (distanceValue * RATE_PER_KM) + ADDITIONAL_EXPENSES;
+            setFare(calculatedFare.toFixed(2));
+          }
+        }
+      );
+    }
+  }, [source, destination]);
+
+  const handleStartTrip = async () => {
+    if (source && destination) {
+      setTripStarted(true);
+      setSaving(true);
+      setSaveError('');
+      try {
+        await addDoc(collection(db, 'trips'), {
+          driverId: user.uid,
+          driverName: userProfile?.username || user.displayName || '',
+          driverEmail: user.email,
+          driverPhone: userProfile?.phoneNumber || '',
+          driverPhoto: user.photoURL || '',
+          source,
+          destination,
+          distance,
+          distanceInKm,
+          fare: parseFloat(fare),
+          ratePerKm: RATE_PER_KM,
+          additionalExpenses: ADDITIONAL_EXPENSES,
+          createdAt: serverTimestamp(),
+          active: true,
+        });
+      } catch (err) {
+        setSaveError('Failed to save trip. Please try again.');
+        setTripStarted(false);
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      alert('Please enter both source and destination');
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-green-400 to-blue-500 p-3 sm:p-4">
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl text-center border border-green-200">
+        <div className="flex items-center justify-between mb-4 sm:mb-6">
+          <UserProfile user={user} userProfile={userProfile} />
+          <button
+            onClick={onShowProfile}
+            className="text-blue-600 hover:text-blue-800 font-medium text-xs sm:text-sm px-2 py-1 rounded-lg hover:bg-blue-50 transition"
+          >
+            View Profile
+          </button>
+        </div>
+        <h2 className="text-xl sm:text-2xl font-bold mb-2 text-gray-800">Pilot Dashboard</h2>
+        <div className="mb-4 sm:mb-6 text-left">
+          <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Source (Coimbatore)</label>
+          <input
+            type="text"
+            placeholder="Enter source location"
+            value={source}
+            onChange={e => setSource(e.target.value)}
+            className="w-full p-2 sm:p-3 mb-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-green-400 text-sm sm:text-base"
+          />
+          <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Destination (Coimbatore)</label>
+          <input
+            type="text"
+            placeholder="Enter destination location"
+            value={destination}
+            onChange={e => setDestination(e.target.value)}
+            className="w-full p-2 sm:p-3 mb-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-green-400 text-sm sm:text-base"
+          />
+          <button
+            onClick={handleStartTrip}
+            className={`w-full py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow-lg transition text-sm sm:text-base ${tripStarted ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-green-500 to-green-700 text-white hover:from-green-600 hover:to-green-800'}`}
+            disabled={tripStarted || saving}
+          >
+            {saving ? 'Saving...' : tripStarted ? 'Trip Started' : 'Start Trip'}
+          </button>
+          {saveError && <div className="text-red-600 text-xs sm:text-sm mt-2">{saveError}</div>}
+        </div>
+        <MapWithRoute source={source} destination={destination} />
+        {distance && (
+          <div className="mb-3 sm:mb-4 text-base sm:text-lg text-green-700 font-semibold">
+            Distance: {distance}
+          </div>
+        )}
+        {fare && (
+          <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-green-50 rounded-lg sm:rounded-xl border border-green-200">
+            <div className="text-base sm:text-lg font-bold text-green-800 mb-2">Fare Calculation</div>
+            <div className="text-xs sm:text-sm text-gray-600 space-y-1">
+              <div>Distance: {distanceInKm} km × ₹{RATE_PER_KM} = ₹{(distanceInKm * RATE_PER_KM).toFixed(2)}</div>
+              <div>Additional Expenses: ₹{ADDITIONAL_EXPENSES}</div>
+              <div className="border-t border-green-200 pt-2 mt-2">
+                <div className="font-bold text-base sm:text-lg text-green-800">Total Fare: ₹{fare}</div>
+              </div>
+            </div>
+          </div>
+        )}
+        <button
+          onClick={onSignOut}
+          className="w-full bg-gradient-to-r from-red-500 to-red-700 text-white px-4 py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow hover:from-red-600 hover:to-red-800 transition text-sm sm:text-base"
+        >
+          Sign Out
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
+  const [source, setSource] = useState('');
+  const [destination, setDestination] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [distance, setDistance] = useState(null);
+  const [distanceInKm, setDistanceInKm] = useState(null);
+  const [fare, setFare] = useState(null);
+  const [availableTrips, setAvailableTrips] = useState([]);
+  const [searchError, setSearchError] = useState('');
+  const [bookingTrip, setBookingTrip] = useState(null);
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const [showPayment, setShowPayment] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [upiId, setUpiId] = useState('');
+  const [paymentLoading, setPaymentLoading] = useState(false);
+
+  // Calculate distance and fare using Google Maps Directions API
+  useEffect(() => {
+    setDistance(null);
+    setDistanceInKm(null);
+    setFare(null);
+    if (window.google && source && destination) {
+      const service = new window.google.maps.DirectionsService();
+      service.route(
+        {
+          origin: source,
+          destination: destination,
+          travelMode: window.google.maps.TravelMode.DRIVING,
+        },
+        (result, status) => {
+          if (status === 'OK') {
+            const route = result.routes[0];
+            const leg = route.legs[0];
+            setDistance(leg.distance.text);
+            
+            // Extract distance in kilometers for fare calculation
+            const distanceText = leg.distance.text;
+            const distanceValue = parseFloat(distanceText.replace(' km', '').replace(',', ''));
+            setDistanceInKm(distanceValue);
+            
+            // Calculate fare: (distance * rate) + additional expenses
+            const calculatedFare = (distanceValue * RATE_PER_KM) + ADDITIONAL_EXPENSES;
+            setFare(calculatedFare.toFixed(2));
+          }
+        }
+      );
+    }
+  }, [source, destination]);
+
+  const handleSearch = async () => {
+    if (source && destination) {
+      setSearching(true);
+      setSearchError('');
+      setAvailableTrips([]);
+      try {
+        const q = query(
+          collection(db, 'trips'),
+          where('source', '==', source),
+          where('destination', '==', destination),
+          where('active', '==', true)
+        );
+        const querySnapshot = await getDocs(q);
+        const trips = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Sort trips by pilot ratings (highest first)
+        const tripsWithRatings = await Promise.all(
+          trips.map(async (trip) => {
+            try {
+              const ratingsQuery = query(
+                collection(db, 'ratings'),
+                where('ratedUserId', '==', trip.driverId)
+              );
+              const ratingsSnapshot = await getDocs(ratingsQuery);
+              const ratings = ratingsSnapshot.docs.map(doc => doc.data().rating);
+              
+              const averageRating = ratings.length > 0 
+                ? (ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length).toFixed(1)
+                : 0;
+              
+              return {
+                ...trip,
+                averageRating: parseFloat(averageRating),
+                ratingCount: ratings.length
+              };
+            } catch (err) {
+              console.error('Error fetching ratings for trip:', err);
+              return { ...trip, averageRating: 0, ratingCount: 0 };
+            }
+          })
+        );
+        
+        // Sort by average rating (highest first), then by rating count
+        tripsWithRatings.sort((a, b) => {
+          if (b.averageRating !== a.averageRating) {
+            return b.averageRating - a.averageRating;
+          }
+          return b.ratingCount - a.ratingCount;
+        });
+        
+        setAvailableTrips(tripsWithRatings);
+      } catch (err) {
+        setSearchError('Failed to search for trips. Please try again.');
+      } finally {
+        setSearching(false);
+      }
+    } else {
+      alert('Please enter both source and destination');
+    }
+  };
+
+  const handleBookRide = async (trip) => {
+    setBookingTrip(trip);
+  };
+
+  const confirmBooking = async () => {
+    if (!bookingTrip) return;
+    
+    // Show payment modal instead of direct booking
+    setShowPayment(true);
+  };
+
+  const processPayment = async () => {
+    if (!paymentMethod || !upiId.trim()) {
+      alert('Please select payment method and enter UPI ID');
+      return;
+    }
+
+    setPaymentLoading(true);
+    try {
+      // Simulate payment processing
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Create booking record with payment details
+      await addDoc(collection(db, 'bookings'), {
+        tripId: bookingTrip.id,
+        pilotId: bookingTrip.driverId,
+        pilotName: bookingTrip.driverName,
+        pilotEmail: bookingTrip.driverEmail,
+        pilotPhone: bookingTrip.driverPhone,
+        buddyId: user.uid,
+        buddyName: userProfile?.username || user.displayName || '',
+        buddyEmail: user.email,
+        buddyPhone: userProfile?.phoneNumber || '',
+        source: bookingTrip.source,
+        destination: bookingTrip.destination,
+        fare: bookingTrip.fare,
+        distance: bookingTrip.distance,
+        paymentMethod: paymentMethod,
+        upiId: upiId,
+        paymentStatus: 'completed',
+        status: 'confirmed',
+        createdAt: serverTimestamp(),
+      });
+
+      // Update trip status to booked
+      await updateDoc(doc(db, 'trips', bookingTrip.id), {
+        active: false,
+        bookedBy: user.uid,
+        bookedAt: serverTimestamp(),
+      });
+
+      // Remove the booked trip from available trips
+      setAvailableTrips(prev => prev.filter(trip => trip.id !== bookingTrip.id));
+      setBookingTrip(null);
+      setShowPayment(false);
+      setPaymentMethod('');
+      setUpiId('');
+      
+      alert('Payment successful! Ride booked. Check your profile for booking details.');
+    } catch (err) {
+      console.error('Error processing payment:', err);
+      alert('Payment failed. Please try again.');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const cancelBooking = () => {
+    setBookingTrip(null);
+  };
+
+  const cancelPayment = () => {
+    setShowPayment(false);
+    setPaymentMethod('');
+    setUpiId('');
+  };
+
+  const renderStars = (rating) => {
+    const stars = [];
+    for (let i = 1; i <= 5; i++) {
+      stars.push(
+        <span key={i} className={i <= rating ? 'text-yellow-400' : 'text-gray-300'}>
+          ★
+        </span>
+      );
+    }
+    return stars;
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-yellow-300 to-green-400 p-3 sm:p-4">
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl text-center border border-yellow-200">
+        <div className="flex items-center justify-between mb-4 sm:mb-6">
+          <UserProfile user={user} userProfile={userProfile} />
+          <button
+            onClick={onShowProfile}
+            className="text-blue-600 hover:text-blue-800 font-medium text-xs sm:text-sm px-2 py-1 rounded-lg hover:bg-blue-50 transition"
+          >
+            View Profile
+          </button>
+        </div>
+        <h2 className="text-xl sm:text-2xl font-bold mb-2 text-gray-800">Buddy Dashboard</h2>
+        <div className="mb-4 sm:mb-6 text-left">
+          <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Source (Coimbatore)</label>
+          <input
+            type="text"
+            placeholder="Enter source location"
+            value={source}
+            onChange={e => setSource(e.target.value)}
+            className="w-full p-2 sm:p-3 mb-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm sm:text-base"
+          />
+          <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Destination (Coimbatore)</label>
+          <input
+            type="text"
+            placeholder="Enter destination location"
+            value={destination}
+            onChange={e => setDestination(e.target.value)}
+            className="w-full p-2 sm:p-3 mb-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm sm:text-base"
+          />
+          <button
+            onClick={handleSearch}
+            className={`w-full py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow-lg transition text-sm sm:text-base ${searching ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-yellow-400 to-green-500 text-white hover:from-yellow-500 hover:to-green-600'}`}
+            disabled={searching}
+          >
+            {searching ? 'Searching...' : 'Find a Pilot'}
+          </button>
+          {searchError && <div className="text-red-600 text-xs sm:text-sm mt-2">{searchError}</div>}
+        </div>
+        <MapWithRoute source={source} destination={destination} />
+        {distance && (
+          <div className="mb-3 sm:mb-4 text-base sm:text-lg text-yellow-700 font-semibold">
+            Distance: {distance}
+          </div>
+        )}
+        {fare && (
+          <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-yellow-50 rounded-lg sm:rounded-xl border border-yellow-200">
+            <div className="text-base sm:text-lg font-bold text-yellow-800 mb-2">Estimated Fare</div>
+            <div className="text-xs sm:text-sm text-gray-600 space-y-1">
+              <div>Distance: {distanceInKm} km × ₹{RATE_PER_KM} = ₹{(distanceInKm * RATE_PER_KM).toFixed(2)}</div>
+              <div>Additional Expenses: ₹{ADDITIONAL_EXPENSES}</div>
+              <div className="border-t border-yellow-200 pt-2 mt-2">
+                <div className="font-bold text-base sm:text-lg text-yellow-800">Total: ₹{fare}</div>
+              </div>
+            </div>
+          </div>
+        )}
+        {availableTrips.length > 0 && (
+          <div className="mb-4 sm:mb-6 text-left">
+            <h3 className="text-base sm:text-lg font-bold mb-2 text-gray-800">Available Pilots (Sorted by Rating):</h3>
+            <ul className="space-y-3">
+              {availableTrips.map(trip => (
+                <li key={trip.id} className="p-3 sm:p-4 bg-yellow-50 rounded-lg sm:rounded-xl border border-yellow-200 shadow">
+                  <div className="flex items-center gap-3 sm:gap-4 mb-3">
+                    {trip.driverPhoto ? (
+                      <img src={trip.driverPhoto} alt="Pilot" className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-yellow-400 flex-shrink-0" />
+                    ) : (
+                      <UserCircle2 className="w-10 h-10 sm:w-12 sm:h-12 text-yellow-400 flex-shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-gray-800 text-sm sm:text-base truncate">{trip.driverName || 'Pilot'}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex text-xs sm:text-sm">
+                          {renderStars(trip.averageRating)}
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          {trip.averageRating} ({trip.ratingCount} reviews)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-gray-600 text-xs sm:text-sm mb-3 space-y-1">
+                    <div className="truncate">📧 {trip.driverEmail}</div>
+                    {trip.driverPhone && <div className="truncate">📞 {trip.driverPhone}</div>}
+                    <div className="mt-2">📍 From: {trip.source}</div>
+                    <div>🎯 To: {trip.destination}</div>
+                    <div className="text-green-700 font-semibold">💰 Fare: ₹{trip.fare}</div>
+                  </div>
+                  <button
+                    onClick={() => handleBookRide(trip)}
+                    className="w-full bg-gradient-to-r from-green-500 to-green-700 text-white py-2 rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm"
+                  >
+                    Book This Ride
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <button
+          onClick={onSignOut}
+          className="w-full bg-gradient-to-r from-red-500 to-red-700 text-white px-4 py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow hover:from-red-600 hover:to-red-800 transition text-sm sm:text-base"
+        >
+          Sign Out
+        </button>
+      </div>
+
+      {/* Booking Confirmation Modal */}
+      {bookingTrip && !showPayment && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
+          <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-8 max-w-sm sm:max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-4">Confirm Booking</h3>
+            <div className="mb-6 space-y-3 sm:space-y-4">
+              <div className="p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl border border-blue-200">
+                <h4 className="font-semibold text-blue-800 mb-2 text-sm sm:text-base">Pilot Details:</h4>
+                <div className="text-xs sm:text-sm text-gray-700 space-y-1">
+                  <div>👤 {bookingTrip.driverName}</div>
+                  <div className="truncate">📧 {bookingTrip.driverEmail}</div>
+                  <div>📞 {bookingTrip.driverPhone}</div>
+                </div>
+              </div>
+              <div className="p-3 sm:p-4 bg-green-50 rounded-lg sm:rounded-xl border border-green-200">
+                <h4 className="font-semibold text-green-800 mb-2 text-sm sm:text-base">Your Details (Shared with Pilot):</h4>
+                <div className="text-xs sm:text-sm text-gray-700 space-y-1">
+                  <div>👤 {userProfile?.username || user.displayName || 'User'}</div>
+                  <div className="truncate">📧 {user.email}</div>
+                  <div>📞 {userProfile?.phoneNumber || 'Not provided'}</div>
+                </div>
+              </div>
+              <div className="p-3 sm:p-4 bg-yellow-50 rounded-lg sm:rounded-xl border border-yellow-200">
+                <h4 className="font-semibold text-yellow-800 mb-2 text-sm sm:text-base">Trip Details:</h4>
+                <div className="text-xs sm:text-sm text-gray-700 space-y-1">
+                  <div>📍 From: {bookingTrip.source}</div>
+                  <div>🎯 To: {bookingTrip.destination}</div>
+                  <div>💰 Fare: ₹{bookingTrip.fare}</div>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 sm:gap-3">
+              <button
+                onClick={cancelBooking}
+                className="flex-1 py-2 sm:py-3 bg-gray-500 text-white rounded-lg sm:rounded-xl font-semibold hover:bg-gray-600 transition text-sm"
+                disabled={bookingLoading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmBooking}
+                className="flex-1 py-2 sm:py-3 bg-gradient-to-r from-green-500 to-green-700 text-white rounded-lg sm:rounded-xl font-semibold hover:from-green-600 hover:to-green-800 transition text-sm"
+                disabled={bookingLoading}
+              >
+                {bookingLoading ? 'Processing...' : 'Proceed to Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UPI Payment Modal */}
+      {showPayment && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
+          <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-8 max-w-sm sm:max-w-md w-full shadow-2xl">
+            <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-4">UPI Payment</h3>
+            
+            <div className="mb-6 p-4 bg-blue-50 rounded-lg sm:rounded-xl border border-blue-200">
+              <div className="text-center mb-4">
+                <div className="text-2xl font-bold text-blue-800">₹{bookingTrip?.fare}</div>
+                <div className="text-sm text-gray-600">Amount to be paid</div>
+              </div>
+              <div className="text-xs sm:text-sm text-gray-700 space-y-1">
+                <div>📍 From: {bookingTrip?.source}</div>
+                <div>🎯 To: {bookingTrip?.destination}</div>
+                <div>👤 Pilot: {bookingTrip?.driverName}</div>
+              </div>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-gray-700 font-medium mb-2 text-sm sm:text-base">Select UPI App</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm sm:text-base"
+                >
+                  <option value="">Choose UPI App</option>
+                  <option value="gpay">Google Pay</option>
+                  <option value="phonepe">PhonePe</option>
+                  <option value="paytm">Paytm</option>
+                  <option value="amazonpay">Amazon Pay</option>
+                  <option value="bhim">BHIM</option>
+                  <option value="other">Other UPI Apps</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-medium mb-2 text-sm sm:text-base">Pilot's UPI ID</label>
+                <input
+                  type="text"
+                  placeholder="Enter pilot's UPI ID (e.g., pilot@upi)"
+                  value={upiId}
+                  onChange={(e) => setUpiId(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm sm:text-base"
+                />
+                <p className="text-xs text-gray-500 mt-1">Ask the pilot for their UPI ID</p>
+              </div>
+            </div>
+
+            <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200 mb-6">
+              <div className="text-xs sm:text-sm text-yellow-800">
+                <strong>Payment Instructions:</strong>
+                <ol className="list-decimal list-inside mt-2 space-y-1">
+                  <li>Select your preferred UPI app</li>
+                  <li>Enter the pilot's UPI ID</li>
+                  <li>Pay ₹{bookingTrip?.fare} to the pilot</li>
+                  <li>Confirm payment to complete booking</li>
+                </ol>
+              </div>
+            </div>
+
+            <div className="flex gap-2 sm:gap-3">
+              <button
+                onClick={cancelPayment}
+                className="flex-1 py-2 sm:py-3 bg-gray-500 text-white rounded-lg sm:rounded-xl font-semibold hover:bg-gray-600 transition text-sm"
+                disabled={paymentLoading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={processPayment}
+                className="flex-1 py-2 sm:py-3 bg-gradient-to-r from-green-500 to-green-700 text-white rounded-lg sm:rounded-xl font-semibold hover:from-green-600 hover:to-green-800 transition text-sm"
+                disabled={paymentLoading || !paymentMethod || !upiId.trim()}
+              >
+                {paymentLoading ? 'Processing Payment...' : 'Confirm Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LoginScreen({ onLogin, loading, error }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (isSignUp && password !== confirmPassword) {
+      onLogin('Passwords do not match', 'error');
+      return;
+    }
+
+    if (password.length < 6) {
+      onLogin('Password must be at least 6 characters', 'error');
+      return;
+    }
+
+    onLogin(email, password, isSignUp);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 flex items-center justify-center p-3 sm:p-4">
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl border border-blue-200">
+        <div className="text-center mb-6 sm:mb-8">
+          <Car className="w-12 h-12 sm:w-16 sm:h-16 text-blue-600 mx-auto mb-4" />
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-800">COIMBUDDY</h1>
+          <p className="text-gray-600 text-sm sm:text-base">Share rides, save money, go green</p>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
+          <div>
+            <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Email Address</label>
+            <input
+              type="email"
+              placeholder="Enter your email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              className="w-full p-2 sm:p-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm sm:text-base"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Password</label>
+            <input
+              type="password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              className="w-full p-2 sm:p-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm sm:text-base"
+              required
+            />
+          </div>
+
+          {isSignUp && (
+            <div>
+              <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Confirm Password</label>
+              <input
+                type="password"
+                placeholder="Confirm your password"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                className="w-full p-2 sm:p-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm sm:text-base"
+                required
+              />
+            </div>
+          )}
+
+          {error && <div className="text-red-600 text-xs sm:text-sm">{error}</div>}
+
+          <button
+            type="submit"
+            className="w-full bg-gradient-to-r from-blue-500 to-blue-700 text-white py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow-lg hover:from-blue-600 hover:to-blue-800 transition flex items-center justify-center gap-2 text-sm sm:text-base"
+            disabled={loading}
+          >
+            {loading ? 'Processing...' : (isSignUp ? 'Sign Up' : 'Sign In')}
+          </button>
+        </form>
+
+        <div className="mt-4 sm:mt-6 text-center">
+          <button
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="text-blue-600 hover:text-blue-800 font-medium text-sm sm:text-base"
+          >
+            {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UserProfileSetup({ user, onComplete }) {
+  const [username, setUsername] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSaveProfile = async () => {
+    if (!username.trim() || !phoneNumber.trim()) {
+      setError('Please fill in all fields');
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+
+    try {
+      // Save user profile to Firestore
+      await setDoc(doc(db, 'userProfiles', user.uid), {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName,
+        photoURL: user.photoURL,
+        username: username.trim(),
+        phoneNumber: phoneNumber.trim(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+
+      onComplete();
+    } catch (err) {
+      setError('Failed to save profile. Please try again.');
+      console.error('Error saving profile:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-600 to-purple-700 p-3 sm:p-4">
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl border border-blue-200">
+        <div className="text-center mb-6 sm:mb-8">
+          <Car className="w-12 h-12 sm:w-16 sm:h-16 text-blue-600 mx-auto mb-4" />
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-800">COIMBUDDY</h1>
+          <p className="text-gray-600 text-sm sm:text-base">Complete your profile</p>
+        </div>
+        
+        <div className="mb-4 sm:mb-6">
+          <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-6 p-3 sm:p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl sm:rounded-2xl shadow border border-gray-200">
+            {user.photoURL ? (
+              <img src={user.photoURL} alt="Profile" className="w-12 h-12 sm:w-14 sm:h-14 rounded-full border-2 border-blue-400 flex-shrink-0" />
+            ) : (
+              <UserCircle2 className="w-12 h-12 sm:w-14 sm:h-14 text-blue-400 flex-shrink-0" />
+            )}
+            <div className="text-left min-w-0 flex-1">
+              <div className="font-bold text-base sm:text-lg text-gray-800 truncate">{user.displayName || 'User'}</div>
+              <div className="text-gray-500 text-xs sm:text-sm truncate">{user.email}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3 sm:space-y-4">
+          <div>
+            <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Username *</label>
+            <input
+              type="text"
+              placeholder="Enter your username"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              className="w-full p-2 sm:p-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm sm:text-base"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Phone Number *</label>
+            <input
+              type="tel"
+              placeholder="Enter your phone number"
+              value={phoneNumber}
+              onChange={e => setPhoneNumber(e.target.value)}
+              className="w-full p-2 sm:p-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm sm:text-base"
+              required
+            />
+          </div>
+
+          {error && <div className="text-red-600 text-xs sm:text-sm">{error}</div>}
+
+          <button
+            onClick={handleSaveProfile}
+            disabled={saving}
+            className={`w-full py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow-lg transition text-sm sm:text-base ${
+              saving 
+                ? 'bg-gray-400 cursor-not-allowed' 
+                : 'bg-gradient-to-r from-blue-500 to-blue-700 text-white hover:from-blue-600 hover:to-blue-800'
+            }`}
+          >
+            {saving ? 'Saving...' : 'Complete Profile'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [user, setUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [role, setRole] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [showProfilePage, setShowProfilePage] = useState(false);
+  const navigate = useNavigate();
+
+  // Check if user profile exists
+  const checkUserProfile = async (firebaseUser) => {
+    if (!firebaseUser) {
+      setUserProfile(null);
+      setProfileLoading(false);
+      return;
+    }
+
+    try {
+      const userDoc = await getDoc(doc(db, 'userProfiles', firebaseUser.uid));
+      if (userDoc.exists()) {
+        setUserProfile(userDoc.data());
+      } else {
+        setUserProfile(null);
+      }
+    } catch (err) {
+      console.error('Error checking user profile:', err);
+      setUserProfile(null);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setUser(firebaseUser);
+      if (!firebaseUser) {
+        setRole(null);
+        setUserProfile(null);
+        setProfileLoading(false);
+        navigate('/');
+      } else {
+        setProfileLoading(true);
+        await checkUserProfile(firebaseUser);
+      }
+    });
+    return () => unsubscribe();
+  }, [navigate]);
+
+  const handleEmailAuth = async (email, password, isSignUp) => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      if (isSignUp) {
+        // Create new user
+        await createUserWithEmailAndPassword(auth, email, password);
+      } else {
+        // Sign in existing user
+        await signInWithEmailAndPassword(auth, email, password);
+      }
+      // onAuthStateChanged will update user
+    } catch (err) {
+      let errorMessage = 'Authentication failed. Please try again.';
+      
+      switch (err.code) {
+        case 'auth/email-already-in-use':
+          errorMessage = 'This email is already registered. Please sign in instead.';
+          break;
+        case 'auth/user-not-found':
+          errorMessage = 'No account found with this email. Please sign up first.';
+          break;
+        case 'auth/wrong-password':
+          errorMessage = 'Incorrect password. Please try again.';
+          break;
+        case 'auth/invalid-email':
+          errorMessage = 'Please enter a valid email address.';
+          break;
+        case 'auth/weak-password':
+          errorMessage = 'Password should be at least 6 characters long.';
+          break;
+        default:
+          errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
+      console.error('Auth error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut(auth);
+    setRole(null);
+    setUserProfile(null);
+    window.location.reload();
+  };
+
+  const handleProfileComplete = () => {
+    // Refresh user profile
+    checkUserProfile(user);
+  };
+
+  const handleShowProfile = () => {
+    setShowProfilePage(true);
+  };
+
+  const handleBackFromProfile = () => {
+    setShowProfilePage(false);
+  };
+
+  // Show loading while checking user profile
+  if (profileLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-purple-700">
+        <div className="bg-white rounded-3xl p-10 shadow-2xl text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading your profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Routes>
+      <Route
+        path="/"
+        element={
+          user ? (
+            showProfilePage ? (
+              <UserProfilePage 
+                user={user} 
+                userProfile={userProfile} 
+                onBack={handleBackFromProfile}
+                onSignOut={handleSignOut}
+              />
+            ) : !userProfile ? (
+              <UserProfileSetup user={user} onComplete={handleProfileComplete} />
+            ) : role === null ? (
+              <RoleSelection onSelect={setRole} />
+            ) : role === 'pilot' ? (
+              <PilotDashboard 
+                user={user} 
+                userProfile={userProfile} 
+                onSignOut={handleSignOut}
+                onShowProfile={handleShowProfile}
+              />
+            ) : (
+              <BuddyDashboard 
+                user={user} 
+                userProfile={userProfile} 
+                onSignOut={handleSignOut}
+                onShowProfile={handleShowProfile}
+              />
+            )
+          ) : (
+            <LoginScreen onLogin={handleEmailAuth} loading={loading} error={error} />
+          )
+        }
+      />
+    </Routes>
+  );
+}
+
+export default function AppWithRouter() {
+  return (
+    <Router>
+      <App />
+    </Router>
+  );
+}
