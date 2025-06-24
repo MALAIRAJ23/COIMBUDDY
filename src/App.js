@@ -118,6 +118,7 @@ function UserProfilePage({ user, userProfile, onBack, onSignOut }) {
   const [averageRating, setAverageRating] = useState(0);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [buddyRidesThisMonth, setBuddyRidesThisMonth] = useState([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -153,6 +154,19 @@ function UserProfilePage({ user, userProfile, onBack, onSignOut }) {
         const buddyBookings = buddyBookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         setBookings([...pilotBookings, ...buddyBookings]);
+
+        // Filter buddy rides for this month
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+        const ridesThisMonth = buddyBookings.filter(b => {
+          if (b.createdAt && b.createdAt.toDate) {
+            const d = b.createdAt.toDate();
+            return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+          }
+          return false;
+        });
+        setBuddyRidesThisMonth(ridesThisMonth);
       } catch (err) {
         console.error('Error fetching data:', err);
       } finally {
@@ -279,6 +293,24 @@ function UserProfilePage({ user, userProfile, onBack, onSignOut }) {
             )}
           </div>
 
+          {/* Rides Travelled This Month (Buddy) */}
+          {userProfile && buddyRidesThisMonth.length > 0 && (
+            <div className="mb-8">
+              <h3 className="text-xl font-bold text-gray-800 mb-4">Rides Travelled This Month</h3>
+              <ul className="space-y-3">
+                {buddyRidesThisMonth.map(ride => (
+                  <li key={ride.id} className="p-4 bg-green-50 rounded-xl border border-green-200">
+                    <div className="font-semibold text-gray-800 mb-1">From: {ride.source}</div>
+                    <div className="font-semibold text-gray-800 mb-1">To: {ride.destination}</div>
+                    <div className="text-xs text-gray-700">Date: {ride.createdAt?.toDate?.() ? ride.createdAt.toDate().toLocaleDateString() : 'Recently'}</div>
+                    <div className="text-xs text-gray-700">Fare: ₹{ride.fare}</div>
+                    <div className="text-xs text-gray-700">Pilot: {ride.pilotName}</div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* Booking History */}
           <div>
             <h3 className="text-xl font-bold text-gray-800 mb-4">Booking History</h3>
@@ -377,6 +409,7 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile }) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [pendingBookings, setPendingBookings] = useState([]);
+  const [acceptedBookings, setAcceptedBookings] = useState([]);
 
   // Calculate distance and fare using Google Maps Directions API
   useEffect(() => {
@@ -422,6 +455,19 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile }) {
       setPendingBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     };
     fetchPending();
+  }, [user.uid]);
+
+  useEffect(() => {
+    const fetchAccepted = async () => {
+      const q = query(
+        collection(db, 'trips'),
+        where('driverId', '==', user.uid),
+        where('status', '==', 'accepted')
+      );
+      const snapshot = await getDocs(q);
+      setAcceptedBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    };
+    fetchAccepted();
   }, [user.uid]);
 
   const handleStartTrip = async () => {
@@ -474,6 +520,19 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile }) {
     } catch (err) {
       console.error('Error accepting booking:', err);
       toast.error('Failed to accept booking.');
+    }
+  };
+
+  const handleInitiatePayment = async (tripId) => {
+    try {
+      await updateDoc(doc(db, 'trips', tripId), {
+        paymentInitiated: true
+      });
+      toast.success('Payment initiated! Buddy can now pay.');
+      setAcceptedBookings(prev => prev.map(trip => trip.id === tripId ? { ...trip, paymentInitiated: true } : trip));
+    } catch (err) {
+      toast.error('Failed to initiate payment.');
+      console.error('Error initiating payment:', err);
     }
   };
 
@@ -568,6 +627,37 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile }) {
           </ul>
         </div>
       )}
+
+      {/* Accepted Bookings Section */}
+      {acceptedBookings.length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-lg font-bold text-blue-800 mb-2">Accepted Bookings (Ready for Payment)</h3>
+          <ul className="space-y-3">
+            {acceptedBookings.map(trip => (
+              <li key={trip.id} className="p-3 bg-blue-50 rounded-xl border border-blue-200">
+                <div className="mb-2 font-semibold text-gray-800">Buddy: {trip.buddyName}</div>
+                <div className="text-xs text-gray-700 mb-2">
+                  <div>📧 {trip.buddyEmail}</div>
+                  <div>📞 {trip.buddyPhone}</div>
+                  <div>From: {trip.source}</div>
+                  <div>To: {trip.destination}</div>
+                  <div>Fare: ₹{trip.fare}</div>
+                </div>
+                {trip.paymentInitiated ? (
+                  <div className="text-green-700 font-semibold">Payment Initiated</div>
+                ) : (
+                  <button
+                    onClick={() => handleInitiatePayment(trip.id)}
+                    className="w-full bg-gradient-to-r from-green-500 to-green-700 text-white py-2 rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm"
+                  >
+                    Initiate Payment
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -587,6 +677,11 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
   const [paymentMethod, setPaymentMethod] = useState('');
   const [upiId, setUpiId] = useState('');
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [myAcceptedTrip, setMyAcceptedTrip] = useState(null);
+  const [showBuddyPayment, setShowBuddyPayment] = useState(false);
+  const [buddyPaymentDone, setBuddyPaymentDone] = useState(false);
+  const [buddyPaymentMethod, setBuddyPaymentMethod] = useState('');
+  const [buddyPaymentLoading, setBuddyPaymentLoading] = useState(false);
 
   // Calculate distance and fare using Google Maps Directions API
   useEffect(() => {
@@ -620,6 +715,20 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
       );
     }
   }, [source, destination]);
+
+  useEffect(() => {
+    const fetchMyAccepted = async () => {
+      const q = query(
+        collection(db, 'trips'),
+        where('buddyId', '==', user.uid),
+        where('status', '==', 'accepted')
+      );
+      const snapshot = await getDocs(q);
+      const trips = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setMyAcceptedTrip(trips.length > 0 ? trips[0] : null);
+    };
+    fetchMyAccepted();
+  }, [user.uid]);
 
   const handleSearch = async () => {
     if (source && destination) {
@@ -760,6 +869,29 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
     setShowPayment(false);
     setPaymentMethod('');
     setUpiId('');
+  };
+
+  const handleShowBuddyPayment = () => setShowBuddyPayment(true);
+  const handleBuddyPayment = async () => {
+    if (!buddyPaymentMethod) {
+      alert('Please select a payment method');
+      return;
+    }
+    setBuddyPaymentLoading(true);
+    try {
+      await updateDoc(doc(db, 'trips', myAcceptedTrip.id), {
+        paymentStatus: 'completed',
+        paymentMethod: buddyPaymentMethod
+      });
+      setBuddyPaymentDone(true);
+      toast.success('Payment completed!');
+    } catch (err) {
+      toast.error('Payment failed.');
+      console.error('Error in buddy payment:', err);
+    } finally {
+      setBuddyPaymentLoading(false);
+      setShowBuddyPayment(false);
+    }
   };
 
   const renderStars = (rating) => {
@@ -1010,6 +1142,79 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Buddy Payment Modal */}
+      {showBuddyPayment && myAcceptedTrip && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">Complete Payment</h3>
+            <div className="mb-4">
+              <label className="block text-gray-700 font-medium mb-2">Select Payment Method</label>
+              <select
+                value={buddyPaymentMethod}
+                onChange={e => setBuddyPaymentMethod(e.target.value)}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400 text-sm"
+              >
+                <option value="">Choose Payment Method</option>
+                <option value="cash">Cash</option>
+                <option value="upi">UPI</option>
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowBuddyPayment(false)}
+                className="flex-1 py-2 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition text-sm"
+                disabled={buddyPaymentLoading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBuddyPayment}
+                className="flex-1 py-2 bg-gradient-to-r from-green-500 to-green-700 text-white rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm"
+                disabled={buddyPaymentLoading || !buddyPaymentMethod}
+              >
+                {buddyPaymentLoading ? 'Processing...' : 'Confirm Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* My Accepted Trip */}
+      {myAcceptedTrip && (
+        <div className="mb-6 p-4 bg-green-50 rounded-xl border border-green-200">
+          <h3 className="text-lg font-bold text-green-800 mb-2">Your Current Ride</h3>
+          <div className="flex items-center gap-4 mb-2">
+            {myAcceptedTrip.driverPhoto ? (
+              <img src={myAcceptedTrip.driverPhoto} alt="Pilot" className="w-12 h-12 rounded-full border-2 border-green-400" />
+            ) : (
+              <UserCircle2 className="w-12 h-12 text-green-400" />
+            )}
+            <div>
+              <div className="font-semibold text-gray-800">{myAcceptedTrip.driverName}</div>
+              <div className="text-xs text-gray-600">📧 {myAcceptedTrip.driverEmail}</div>
+              <div className="text-xs text-gray-600">📞 {myAcceptedTrip.driverPhone}</div>
+            </div>
+          </div>
+          <div className="text-xs text-gray-700 mb-2">
+            <div>From: {myAcceptedTrip.source}</div>
+            <div>To: {myAcceptedTrip.destination}</div>
+            <div>Fare: ₹{myAcceptedTrip.fare}</div>
+          </div>
+          {myAcceptedTrip.paymentStatus === 'completed' || buddyPaymentDone ? (
+            <div className="text-green-700 font-semibold">Payment Completed</div>
+          ) : myAcceptedTrip.paymentInitiated ? (
+            <button
+              onClick={handleShowBuddyPayment}
+              className="w-full bg-gradient-to-r from-green-500 to-green-700 text-white py-2 rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm mt-2"
+            >
+              Pay Now
+            </button>
+          ) : (
+            <div className="text-yellow-700 font-semibold">Waiting for pilot to initiate payment...</div>
+          )}
         </div>
       )}
     </div>
