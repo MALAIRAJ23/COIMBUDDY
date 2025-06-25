@@ -11,6 +11,9 @@ import {
 import { GoogleMap, useJsApiLoader, DirectionsRenderer } from '@react-google-maps/api';
 import { collection, addDoc, query, where, getDocs, serverTimestamp, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import toast, { Toaster } from 'react-hot-toast';
+import BottomNavBar from './BottomNavBar';
+import AnimatedTitle from './AnimatedTitle';
+import TripChart from './TripChart';
 
 const GOOGLE_MAPS_API_KEY = 'AIzaSyB0biE37HC3gkUvKIB_ZfzIk30ZdRARZEM';
 const COIMBATORE_CENTER = { lat: 11.0168, lng: 76.9558 };
@@ -95,6 +98,7 @@ function RoleSelection({ onSelect }) {
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-700 to-purple-900 p-4">
       <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl text-center border border-blue-200">
         <Car className="w-12 h-12 sm:w-14 sm:h-14 text-blue-700 mx-auto mb-4" />
+        <AnimatedTitle />
         <h2 className="text-2xl sm:text-3xl font-extrabold mb-6 text-gray-800">Choose Your Role</h2>
         <button
           className="w-full bg-gradient-to-r from-green-400 to-green-600 text-white py-3 sm:py-3 rounded-xl font-semibold mb-4 shadow-lg hover:from-green-500 hover:to-green-700 transition text-base sm:text-lg"
@@ -201,7 +205,7 @@ function UserProfilePage({ user, userProfile, onBack, onSignOut }) {
             >
               ← Back
             </button>
-            <h1 className="text-2xl font-bold text-gray-800">Profile</h1>
+            <AnimatedTitle />
             <button
               onClick={onSignOut}
               className="text-red-600 hover:text-red-800 font-medium"
@@ -386,6 +390,7 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile }) {
   const [saveError, setSaveError] = useState('');
   const [pendingBookings, setPendingBookings] = useState([]);
   const [acceptedBookings, setAcceptedBookings] = useState([]);
+  const [pilotTab, setPilotTab] = useState('start');
 
   // Calculate distance and fare using Google Maps Directions API
   useEffect(() => {
@@ -512,19 +517,12 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile }) {
     }
   };
 
-  return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-green-400 to-blue-500 p-3 sm:p-4">
-      <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl text-center border border-green-200">
-        <div className="flex items-center justify-between mb-4 sm:mb-6">
-          <UserProfile user={user} userProfile={userProfile} />
-          <button
-            onClick={onShowProfile}
-            className="text-blue-600 hover:text-blue-800 font-medium text-xs sm:text-sm px-2 py-1 rounded-lg hover:bg-blue-50 transition"
-          >
-            View Profile
-          </button>
-        </div>
-        <h2 className="text-xl sm:text-2xl font-bold mb-2 text-gray-800">Pilot Dashboard</h2>
+  let mainContent;
+  if (pilotTab === 'start') {
+    mainContent = (
+      <>
+        <AnimatedTitle />
+        <h2 className="text-xl sm:text-2xl font-bold mb-2 text-gray-800">Start Your Ride</h2>
         <div className="mb-4 sm:mb-6 text-left">
           <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Source (Coimbatore)</label>
           <input
@@ -569,85 +567,192 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile }) {
             </div>
           </div>
         )}
-        <button
-          onClick={onSignOut}
-          className="w-full bg-gradient-to-r from-red-500 to-red-700 text-white px-4 py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow hover:from-red-600 hover:to-red-800 transition text-sm sm:text-base"
-        >
-          Sign Out
-        </button>
-      </div>
-
-      {/* Pending Bookings Section */}
-      {pendingBookings.length > 0 && (
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-4 px-4 py-2 rounded-xl bg-gradient-to-r from-green-400 to-yellow-400 shadow-md border border-green-200">
-            <span className="text-2xl">⏳</span>
-            <h3 className="text-lg font-extrabold text-white tracking-wide">Pending Bookings</h3>
-          </div>
-          <ul className="grid sm:grid-cols-2 gap-6">
-            {pendingBookings.map(trip => (
-              <li key={trip.id} className="group p-5 bg-white rounded-2xl border border-gray-200 shadow-lg hover:shadow-2xl transition-shadow duration-200 flex flex-col gap-2 hover:border-yellow-400">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-green-600 text-lg">👤</span>
-                  <span className="font-semibold text-gray-800 text-base">{trip.buddyName}</span>
-                  <span className="ml-auto px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Pending</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-500">
-                  <span className="inline-flex items-center gap-1"><span className="text-green-500">📍</span>{trip.source}</span>
-                  <span className="inline-flex items-center gap-1"><span className="text-pink-500">🎯</span>{trip.destination}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-500">
-                  <span className="inline-flex items-center gap-1"><span className="text-yellow-500">💰</span>₹{trip.fare}</span>
-                </div>
-                <button
-                  onClick={() => handleAcceptBooking(trip.id)}
-                  className="w-full bg-gradient-to-r from-green-500 to-green-700 text-white py-2 rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm mt-2"
-                >
-                  Accept Booking
-                </button>
-              </li>
-            ))}
-          </ul>
+      </>
+    );
+  } else if (pilotTab === 'passengers') {
+    mainContent = (
+      <div className="mb-8">
+        <AnimatedTitle />
+        <div className="flex items-center gap-2 mb-4 px-4 py-2 rounded-xl bg-gradient-to-r from-green-400 to-blue-400 shadow-md border border-green-200">
+          <span className="text-2xl">👥</span>
+          <h3 className="text-lg font-extrabold text-white tracking-wide">Booked Passengers</h3>
         </div>
-      )}
-
-      {/* Accepted Bookings Section */}
-      {acceptedBookings.length > 0 && (
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-4 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-400 to-green-400 shadow-md border border-blue-200">
-            <span className="text-2xl">✅</span>
-            <h3 className="text-lg font-extrabold text-white tracking-wide">Accepted Bookings (Ready for Payment)</h3>
-          </div>
-          <ul className="grid sm:grid-cols-2 gap-6">
-            {acceptedBookings.map(trip => (
-              <li key={trip.id} className="group p-5 bg-white rounded-2xl border border-gray-200 shadow-lg hover:shadow-2xl transition-shadow duration-200 flex flex-col gap-2 hover:border-green-400">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-green-600 text-lg">👤</span>
-                  <span className="font-semibold text-gray-800 text-base">{trip.buddyName}</span>
-                  <span className={`ml-auto px-2 py-1 rounded-full text-xs font-medium ${trip.paymentInitiated ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{trip.paymentInitiated ? 'Payment Initiated' : 'Accepted'}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-500">
-                  <span className="inline-flex items-center gap-1"><span className="text-green-500">📍</span>{trip.source}</span>
-                  <span className="inline-flex items-center gap-1"><span className="text-pink-500">🎯</span>{trip.destination}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-500">
-                  <span className="inline-flex items-center gap-1"><span className="text-yellow-500">💰</span>₹{trip.fare}</span>
-                </div>
-                {trip.paymentInitiated ? (
-                  <div className="text-green-700 font-semibold">Payment Initiated</div>
-                ) : (
+        
+        {/* Pending Bookings */}
+        {pendingBookings.length > 0 && (
+          <div className="mb-6">
+            <h4 className="text-lg font-bold text-gray-800 mb-3">Pending Requests</h4>
+            <ul className="space-y-4">
+              {pendingBookings.map(trip => (
+                <li key={trip.id} className="p-4 bg-yellow-50 rounded-xl border border-yellow-200 shadow">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-semibold text-gray-800">{trip.buddyName}</div>
+                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Pending</span>
+                  </div>
+                  <div className="text-sm text-gray-600 mb-2">
+                    <div>📞 {trip.buddyPhone || 'No phone'}</div>
+                    <div>📧 {trip.buddyEmail}</div>
+                  </div>
+                  <div className="text-sm text-gray-500 mb-3">
+                    <div>📍 {trip.source} → 🎯 {trip.destination}</div>
+                    <div>💰 ₹{trip.fare}</div>
+                  </div>
                   <button
-                    onClick={() => handleInitiatePayment(trip.id)}
-                    className="w-full bg-gradient-to-r from-green-500 to-green-700 text-white py-2 rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm mt-2"
+                    onClick={() => handleAcceptBooking(trip.id)}
+                    className="w-full bg-gradient-to-r from-green-500 to-green-700 text-white py-2 rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm"
                   >
-                    Initiate Payment
+                    Accept Booking
                   </button>
-                )}
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Accepted Bookings */}
+        {acceptedBookings.length > 0 && (
+          <div>
+            <h4 className="text-lg font-bold text-gray-800 mb-3">Active Passengers</h4>
+            <ul className="space-y-4">
+              {acceptedBookings.map(trip => (
+                <li key={trip.id} className="p-4 bg-green-50 rounded-xl border border-green-200 shadow">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-semibold text-gray-800">{trip.buddyName}</div>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${trip.paymentInitiated ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
+                      {trip.paymentInitiated ? 'Payment Ready' : 'Accepted'}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-600 mb-2">
+                    <div>📞 {trip.buddyPhone || 'No phone'}</div>
+                    <div>📧 {trip.buddyEmail}</div>
+                  </div>
+                  <div className="text-sm text-gray-500 mb-3">
+                    <div>📍 {trip.source} → 🎯 {trip.destination}</div>
+                    <div>💰 ₹{trip.fare}</div>
+                  </div>
+                  {!trip.paymentInitiated && (
+                    <button
+                      onClick={() => handleInitiatePayment(trip.id)}
+                      className="w-full bg-gradient-to-r from-blue-500 to-blue-700 text-white py-2 rounded-lg font-semibold hover:from-blue-600 hover:to-blue-800 transition text-sm"
+                    >
+                      Initiate Payment
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {pendingBookings.length === 0 && acceptedBookings.length === 0 && (
+          <div className="text-center py-8 bg-gray-50 rounded-xl border border-gray-200">
+            <div className="text-4xl mb-4">👥</div>
+            <p className="text-gray-600">No passengers yet</p>
+            <p className="text-sm text-gray-500">Start a trip to receive booking requests</p>
+          </div>
+        )}
+      </div>
+    );
+  } else if (pilotTab === 'contact') {
+    mainContent = (
+      <div className="mb-8">
+        <AnimatedTitle />
+        <div className="p-6 bg-gradient-to-br from-blue-100 to-green-100 rounded-2xl border border-blue-200 shadow-lg">
+          <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">Contact & Support</h3>
+          
+          <div className="space-y-4">
+            <div className="p-4 bg-white rounded-xl border border-blue-200">
+              <h4 className="font-semibold text-blue-800 mb-2">📧 Email Support</h4>
+              <p className="text-gray-700 mb-2">For technical issues or account problems:</p>
+              <a href="mailto:support@coimbuddy.com" className="text-blue-600 font-semibold underline">support@coimbuddy.com</a>
+            </div>
+            
+            <div className="p-4 bg-white rounded-xl border border-green-200">
+              <h4 className="font-semibold text-green-800 mb-2">📞 Emergency Contact</h4>
+              <p className="text-gray-700 mb-2">For urgent safety concerns:</p>
+              <div className="text-green-600 font-semibold">+91 98765 43210</div>
+            </div>
+            
+            <div className="p-4 bg-white rounded-xl border border-purple-200">
+              <h4 className="font-semibold text-purple-800 mb-2">💬 Live Chat</h4>
+              <p className="text-gray-700 mb-2">Available 24/7 for quick assistance</p>
+              <button className="bg-purple-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-purple-600 transition">
+                Start Chat
+              </button>
+            </div>
+          </div>
+          
+          <div className="mt-6 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
+            <p className="text-sm text-yellow-800 text-center">
+              <strong>Response Time:</strong> We usually respond within 2-4 hours during business hours.
+            </p>
+          </div>
         </div>
-      )}
+      </div>
+    );
+  } else if (pilotTab === 'account') {
+    mainContent = (
+      <div className="mb-8">
+        <AnimatedTitle />
+        
+        {/* Pilot Profile Info */}
+        <div className="mb-6 p-6 bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl border border-blue-200 shadow-lg">
+          <h3 className="text-xl font-bold text-gray-800 mb-4">Pilot Profile</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="p-3 bg-white rounded-lg border border-gray-200">
+              <div className="text-sm text-gray-500">Username</div>
+              <div className="font-semibold text-gray-800">{userProfile?.username || 'Not set'}</div>
+            </div>
+            <div className="p-3 bg-white rounded-lg border border-gray-200">
+              <div className="text-sm text-gray-500">Mobile Number</div>
+              <div className="font-semibold text-gray-800">{userProfile?.phoneNumber || 'Not set'}</div>
+            </div>
+            <div className="p-3 bg-white rounded-lg border border-gray-200">
+              <div className="text-sm text-gray-500">Email</div>
+              <div className="font-semibold text-gray-800">{user.email}</div>
+            </div>
+            <div className="p-3 bg-white rounded-lg border border-gray-200">
+              <div className="text-sm text-gray-500">Car Type</div>
+              <div className="font-semibold text-gray-800">{userProfile?.carType || 'Not specified'}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Trips Chart */}
+        <div className="mb-6 p-6 bg-white rounded-2xl border border-gray-200 shadow-lg">
+          <h3 className="text-xl font-bold text-gray-800 mb-4">Trips in Last 5 Days</h3>
+          <TripChart tripData={[3, 5, 2, 7, 4]} />
+        </div>
+
+        {/* Action Buttons */}
+        <div className="space-y-3">
+          <button
+            onClick={onShowProfile}
+            className="w-full bg-gradient-to-r from-blue-500 to-blue-700 text-white px-4 py-3 rounded-lg font-semibold shadow hover:from-blue-600 hover:to-blue-800 transition"
+          >
+            View Full Profile
+          </button>
+          <button
+            onClick={onSignOut}
+            className="w-full bg-gradient-to-r from-red-500 to-red-700 text-white px-4 py-3 rounded-lg font-semibold shadow hover:from-red-600 hover:to-red-800 transition"
+          >
+            Sign Out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-green-400 to-blue-500">
+      <div className="flex-1 flex items-center justify-center p-3 sm:p-4">
+        <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl text-center border border-green-200">
+          {mainContent}
+          <div className="mt-6">
+            <BottomNavBar currentTab={pilotTab} onTabChange={setPilotTab} userType="pilot" />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -672,6 +777,7 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
   const [buddyPaymentDone, setBuddyPaymentDone] = useState(false);
   const [buddyPaymentMethod, setBuddyPaymentMethod] = useState('');
   const [buddyPaymentLoading, setBuddyPaymentLoading] = useState(false);
+  const [buddyTab, setBuddyTab] = useState('book');
 
   // Calculate distance and fare using Google Maps Directions API
   useEffect(() => {
@@ -897,19 +1003,13 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
     return stars;
   };
 
-  return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-yellow-300 to-green-400 p-3 sm:p-4">
-      <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl text-center border border-yellow-200">
-        <div className="flex items-center justify-between mb-4 sm:mb-6">
-          <UserProfile user={user} userProfile={userProfile} />
-          <button
-            onClick={onShowProfile}
-            className="text-blue-600 hover:text-blue-800 font-medium text-xs sm:text-sm px-2 py-1 rounded-lg hover:bg-blue-50 transition"
-          >
-            View Profile
-          </button>
-        </div>
-        <h2 className="text-xl sm:text-2xl font-bold mb-2 text-gray-800">Buddy Dashboard</h2>
+  // Render content based on buddyTab
+  let mainContent;
+  if (buddyTab === 'book') {
+    mainContent = (
+      <>
+        <AnimatedTitle />
+        {/* Book Ride UI (search, available trips, etc.) */}
         <div className="mb-4 sm:mb-6 text-left">
           <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Source (Coimbatore)</label>
           <input
@@ -996,222 +1096,261 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
             </ul>
           </div>
         )}
-        <button
-          onClick={onSignOut}
-          className="w-full bg-gradient-to-r from-red-500 to-red-700 text-white px-4 py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold shadow hover:from-red-600 hover:to-red-800 transition text-sm sm:text-base"
-        >
-          Sign Out
-        </button>
-      </div>
-
-      {/* Booking Confirmation Modal */}
-      {bookingTrip && !showPayment && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
-          <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-8 max-w-sm sm:max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-4">Confirm Booking</h3>
-            <div className="mb-6 space-y-3 sm:space-y-4">
-              <div className="p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl border border-blue-200">
-                <h4 className="font-semibold text-blue-800 mb-2 text-sm sm:text-base">Pilot Details:</h4>
-                <div className="text-xs sm:text-sm text-gray-700 space-y-1">
-                  <div>👤 {bookingTrip.driverName}</div>
-                  <div className="truncate">📧 {bookingTrip.driverEmail}</div>
-                  <div>📞 {bookingTrip.driverPhone}</div>
-                </div>
-              </div>
-              <div className="p-3 sm:p-4 bg-green-50 rounded-lg sm:rounded-xl border border-green-200">
-                <h4 className="font-semibold text-green-800 mb-2 text-sm sm:text-base">Your Details (Shared with Pilot):</h4>
-                <div className="text-xs sm:text-sm text-gray-700 space-y-1">
-                  <div>👤 {userProfile?.username || user.displayName || 'User'}</div>
-                  <div className="truncate">📧 {user.email}</div>
-                  <div>📞 {userProfile?.phoneNumber || 'Not provided'}</div>
-                </div>
-              </div>
-              <div className="p-3 sm:p-4 bg-yellow-50 rounded-lg sm:rounded-xl border border-yellow-200">
-                <h4 className="font-semibold text-yellow-800 mb-2 text-sm sm:text-base">Trip Details:</h4>
-                <div className="text-xs sm:text-sm text-gray-700 space-y-1">
-                  <div>📍 From: {bookingTrip.source || <span className="text-red-500">Not set</span>}</div>
-                  <div>🎯 To: {bookingTrip.destination || <span className="text-red-500">Not set</span>}</div>
-                  <div>💰 Fare: ₹{bookingTrip.fare ?? <span className="text-red-500">Not set</span>}</div>
-                </div>
+        {myAcceptedTrip && (
+          <div className="mb-10 p-6 bg-gradient-to-br from-green-100 to-blue-100 rounded-2xl border border-green-200 shadow-lg">
+            <div className="flex items-center gap-4 mb-4">
+              {myAcceptedTrip.driverPhoto ? (
+                <img src={myAcceptedTrip.driverPhoto} alt="Pilot" className="w-16 h-16 rounded-full border-4 border-green-400 shadow" />
+              ) : (
+                <UserCircle2 className="w-16 h-16 text-green-400" />
+              )}
+              <div>
+                <div className="font-bold text-lg text-gray-800">{myAcceptedTrip.driverName}</div>
+                <div className="text-xs text-gray-600">📧 {myAcceptedTrip.driverEmail}</div>
+                <div className="text-xs text-gray-600">📞 {myAcceptedTrip.driverPhone}</div>
               </div>
             </div>
-            <div className="flex gap-2 sm:gap-3">
-              <button
-                onClick={cancelBooking}
-                className="flex-1 py-2 sm:py-3 bg-gray-500 text-white rounded-lg sm:rounded-xl font-semibold hover:bg-gray-600 transition text-sm"
-                disabled={bookingLoading}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmBooking}
-                className="flex-1 py-2 sm:py-3 bg-gradient-to-r from-green-500 to-green-700 text-white rounded-lg sm:rounded-xl font-semibold hover:from-green-600 hover:to-green-800 transition text-sm"
-                disabled={bookingLoading}
-              >
-                {bookingLoading ? 'Processing...' : 'Proceed to Payment'}
-              </button>
+            <div className="flex items-center gap-4 text-sm text-gray-700 mb-2">
+              <span className="inline-flex items-center gap-1"><span className="text-green-500">📍</span>{myAcceptedTrip.source}</span>
+              <span className="inline-flex items-center gap-1"><span className="text-pink-500">🎯</span>{myAcceptedTrip.destination}</span>
+            </div>
+            {myAcceptedTrip.paymentStatus === 'completed' || buddyPaymentDone ? (
+              <div className="text-green-700 font-semibold mt-2">Payment Completed</div>
+            ) : myAcceptedTrip.paymentInitiated ? (
+              <>
+                <div className="flex items-center gap-2 text-lg font-bold text-green-800 mb-2">
+                  <span className="text-yellow-500">💰</span>
+                  <span>Fare: ₹{myAcceptedTrip.fare}</span>
+                </div>
+                <button
+                  onClick={handleShowBuddyPayment}
+                  className="w-full bg-gradient-to-r from-green-500 to-green-700 text-white py-2 rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm mt-2"
+                >
+                  Pay Now
+                </button>
+              </>
+            ) : (
+              <div className="text-yellow-700 font-semibold mt-2">Waiting for pilot to initiate payment...</div>
+            )}
+          </div>
+        )}
+        {bookingTrip && !showPayment && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
+            <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-8 max-w-sm sm:max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+              <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-4">Confirm Booking</h3>
+              <div className="mb-6 space-y-3 sm:space-y-4">
+                <div className="p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl border border-blue-200">
+                  <h4 className="font-semibold text-blue-800 mb-2 text-sm sm:text-base">Pilot Details:</h4>
+                  <div className="text-xs sm:text-sm text-gray-700 space-y-1">
+                    <div>👤 {bookingTrip.driverName}</div>
+                    <div className="truncate">📧 {bookingTrip.driverEmail}</div>
+                    <div>📞 {bookingTrip.driverPhone}</div>
+                  </div>
+                </div>
+                <div className="p-3 sm:p-4 bg-green-50 rounded-lg sm:rounded-xl border border-green-200">
+                  <h4 className="font-semibold text-green-800 mb-2 text-sm sm:text-base">Your Details (Shared with Pilot):</h4>
+                  <div className="text-xs sm:text-sm text-gray-700 space-y-1">
+                    <div>👤 {userProfile?.username || user.displayName || 'User'}</div>
+                    <div className="truncate">📧 {user.email}</div>
+                    <div>📞 {userProfile?.phoneNumber || 'Not provided'}</div>
+                  </div>
+                </div>
+                <div className="p-3 sm:p-4 bg-yellow-50 rounded-lg sm:rounded-xl border border-yellow-200">
+                  <h4 className="font-semibold text-yellow-800 mb-2 text-sm sm:text-base">Trip Details:</h4>
+                  <div className="text-xs sm:text-sm text-gray-700 space-y-1">
+                    <div>📍 From: {bookingTrip.source || <span className="text-red-500">Not set</span>}</div>
+                    <div>🎯 To: {bookingTrip.destination || <span className="text-red-500">Not set</span>}</div>
+                    <div>💰 Fare: ₹{bookingTrip.fare ?? <span className="text-red-500">Not set</span>}</div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2 sm:gap-3">
+                <button
+                  onClick={cancelBooking}
+                  className="flex-1 py-2 sm:py-3 bg-gray-500 text-white rounded-lg sm:rounded-xl font-semibold hover:bg-gray-600 transition text-sm"
+                  disabled={bookingLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmBooking}
+                  className="flex-1 py-2 sm:py-3 bg-gradient-to-r from-green-500 to-green-700 text-white rounded-lg sm:rounded-xl font-semibold hover:from-green-600 hover:to-green-800 transition text-sm"
+                  disabled={bookingLoading}
+                >
+                  {bookingLoading ? 'Processing...' : 'Proceed to Payment'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* UPI Payment Modal */}
-      {showPayment && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
-          <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-8 max-w-sm sm:max-w-md w-full shadow-2xl">
-            <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-4">UPI Payment</h3>
-            
-            <div className="mb-6 p-4 bg-blue-50 rounded-lg sm:rounded-xl border border-blue-200">
-              <div className="text-center mb-4">
-                <div className="text-2xl font-bold text-blue-800">₹{bookingTrip?.fare}</div>
-                <div className="text-sm text-gray-600">Amount to be paid</div>
+        )}
+        {showPayment && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
+            <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-8 max-w-sm sm:max-w-md w-full shadow-2xl">
+              <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-4">UPI Payment</h3>
+              
+              <div className="mb-6 p-4 bg-blue-50 rounded-lg sm:rounded-xl border border-blue-200">
+                <div className="text-center mb-4">
+                  <div className="text-2xl font-bold text-blue-800">₹{bookingTrip?.fare}</div>
+                  <div className="text-sm text-gray-600">Amount to be paid</div>
+                </div>
+                <div className="text-xs sm:text-sm text-gray-700 space-y-1">
+                  <div>📍 From: {bookingTrip?.source || <span className="text-red-500">Not set</span>}</div>
+                  <div>🎯 To: {bookingTrip?.destination || <span className="text-red-500">Not set</span>}</div>
+                  <div>👤 Pilot: {bookingTrip?.driverName}</div>
+                </div>
               </div>
-              <div className="text-xs sm:text-sm text-gray-700 space-y-1">
-                <div>📍 From: {bookingTrip?.source || <span className="text-red-500">Not set</span>}</div>
-                <div>🎯 To: {bookingTrip?.destination || <span className="text-red-500">Not set</span>}</div>
-                <div>👤 Pilot: {bookingTrip?.driverName}</div>
+
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-gray-700 font-medium mb-2 text-sm sm:text-base">Select UPI App</label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="w-full p-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm sm:text-base"
+                  >
+                    <option value="">Choose UPI App</option>
+                    <option value="gpay">Google Pay</option>
+                    <option value="phonepe">PhonePe</option>
+                    <option value="paytm">Paytm</option>
+                    <option value="amazonpay">Amazon Pay</option>
+                    <option value="bhim">BHIM</option>
+                    <option value="other">Other UPI Apps</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-medium mb-2 text-sm sm:text-base">Pilot's UPI ID</label>
+                  <input
+                    type="text"
+                    placeholder="Enter pilot's UPI ID (e.g., pilot@upi)"
+                    value={upiId}
+                    onChange={(e) => setUpiId(e.target.value)}
+                    className="w-full p-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm sm:text-base"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Ask the pilot for their UPI ID</p>
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200 mb-6">
+                <div className="text-xs sm:text-sm text-yellow-800">
+                  <strong>Payment Instructions:</strong>
+                  <ol className="list-decimal list-inside mt-2 space-y-1">
+                    <li>Select your preferred UPI app</li>
+                    <li>Enter the pilot's UPI ID</li>
+                    <li>Pay ₹{bookingTrip?.fare} to the pilot</li>
+                    <li>Confirm payment to complete booking</li>
+                  </ol>
+                </div>
+              </div>
+
+              <div className="flex gap-2 sm:gap-3">
+                <button
+                  onClick={cancelPayment}
+                  className="flex-1 py-2 sm:py-3 bg-gray-500 text-white rounded-lg sm:rounded-xl font-semibold hover:bg-gray-600 transition text-sm"
+                  disabled={paymentLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={processPayment}
+                  className="flex-1 py-2 sm:py-3 bg-gradient-to-r from-green-500 to-green-700 text-white rounded-lg sm:rounded-xl font-semibold hover:from-green-600 hover:to-green-800 transition text-sm"
+                  disabled={paymentLoading || !paymentMethod || !upiId.trim()}
+                >
+                  {paymentLoading ? 'Processing Payment...' : 'Confirm Payment'}
+                </button>
               </div>
             </div>
-
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-gray-700 font-medium mb-2 text-sm sm:text-base">Select UPI App</label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm sm:text-base"
-                >
-                  <option value="">Choose UPI App</option>
-                  <option value="gpay">Google Pay</option>
-                  <option value="phonepe">PhonePe</option>
-                  <option value="paytm">Paytm</option>
-                  <option value="amazonpay">Amazon Pay</option>
-                  <option value="bhim">BHIM</option>
-                  <option value="other">Other UPI Apps</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-gray-700 font-medium mb-2 text-sm sm:text-base">Pilot's UPI ID</label>
+          </div>
+        )}
+        {showBuddyPayment && myAcceptedTrip && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
+            <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+              <h3 className="text-lg font-bold text-gray-800 mb-4">Pay with UPI</h3>
+              <div className="mb-4">
+                <label className="block text-gray-700 font-medium mb-2">Pilot's UPI ID</label>
                 <input
                   type="text"
                   placeholder="Enter pilot's UPI ID (e.g., pilot@upi)"
                   value={upiId}
-                  onChange={(e) => setUpiId(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm sm:text-base"
+                  onChange={e => setUpiId(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
                 />
                 <p className="text-xs text-gray-500 mt-1">Ask the pilot for their UPI ID</p>
               </div>
-            </div>
-
-            <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200 mb-6">
-              <div className="text-xs sm:text-sm text-yellow-800">
-                <strong>Payment Instructions:</strong>
-                <ol className="list-decimal list-inside mt-2 space-y-1">
-                  <li>Select your preferred UPI app</li>
-                  <li>Enter the pilot's UPI ID</li>
-                  <li>Pay ₹{bookingTrip?.fare} to the pilot</li>
-                  <li>Confirm payment to complete booking</li>
-                </ol>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowBuddyPayment(false)}
+                  className="flex-1 py-2 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition text-sm"
+                  disabled={buddyPaymentLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleBuddyPayment}
+                  className="flex-1 py-2 bg-gradient-to-r from-green-500 to-green-700 text-white rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm"
+                  disabled={buddyPaymentLoading || !upiId.trim()}
+                >
+                  {buddyPaymentLoading ? 'Processing...' : 'Confirm Payment'}
+                </button>
               </div>
             </div>
+          </div>
+        )}
+      </>
+    );
+  } else if (buddyTab === 'bookings') {
+    mainContent = (
+      <div className="mb-10">
+        <AnimatedTitle />
+        <div className="flex items-center gap-2 mb-4 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-400 to-purple-400 shadow-md border border-blue-200">
+          <span className="text-2xl">📚</span>
+          <h3 className="text-xl font-extrabold text-white tracking-wide">Booking History</h3>
+        </div>
+        {/* Render booking history here (reuse from UserProfilePage or similar) */}
+        {/* ...booking history code... */}
+      </div>
+    );
+  } else if (buddyTab === 'contact') {
+    mainContent = (
+      <div className="mb-10 p-6 bg-gradient-to-br from-blue-100 to-green-100 rounded-2xl border border-blue-200 shadow-lg text-center">
+        <AnimatedTitle />
+        <h3 className="text-lg font-bold text-gray-800 mb-2">Contact Support</h3>
+        <p className="text-gray-700 mb-2">For help or feedback, email us at:</p>
+        <a href="mailto:support@coimbuddy.com" className="text-blue-600 font-semibold underline">support@coimbuddy.com</a>
+        <p className="text-gray-500 mt-4">We usually respond within 24 hours.</p>
+      </div>
+    );
+  } else if (buddyTab === 'account') {
+    mainContent = (
+      <div className="mb-10">
+        <AnimatedTitle />
+        <UserProfile user={user} userProfile={userProfile} />
+        <button
+          onClick={onShowProfile}
+          className="w-full bg-gradient-to-r from-blue-500 to-blue-700 text-white px-4 py-2 rounded-lg font-semibold shadow hover:from-blue-600 hover:to-blue-800 transition text-sm mt-2"
+        >
+          View Full Profile
+        </button>
+        <button
+          onClick={onSignOut}
+          className="w-full bg-gradient-to-r from-red-500 to-red-700 text-white px-4 py-2 rounded-lg font-semibold shadow hover:from-red-600 hover:to-red-800 transition text-sm mt-2"
+        >
+          Sign Out
+        </button>
+      </div>
+    );
+  }
 
-            <div className="flex gap-2 sm:gap-3">
-              <button
-                onClick={cancelPayment}
-                className="flex-1 py-2 sm:py-3 bg-gray-500 text-white rounded-lg sm:rounded-xl font-semibold hover:bg-gray-600 transition text-sm"
-                disabled={paymentLoading}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={processPayment}
-                className="flex-1 py-2 sm:py-3 bg-gradient-to-r from-green-500 to-green-700 text-white rounded-lg sm:rounded-xl font-semibold hover:from-green-600 hover:to-green-800 transition text-sm"
-                disabled={paymentLoading || !paymentMethod || !upiId.trim()}
-              >
-                {paymentLoading ? 'Processing Payment...' : 'Confirm Payment'}
-              </button>
-            </div>
+  return (
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-yellow-300 to-green-400">
+      <div className="flex-1 flex items-center justify-center p-3 sm:p-4">
+        <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl text-center border border-yellow-200">
+          {mainContent}
+          <div className="mt-6">
+            <BottomNavBar currentTab={buddyTab} onTabChange={setBuddyTab} userType="buddy" />
           </div>
         </div>
-      )}
-
-      {/* Buddy Payment Modal */}
-      {showBuddyPayment && myAcceptedTrip && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
-            <h3 className="text-lg font-bold text-gray-800 mb-4">Pay with UPI</h3>
-            <div className="mb-4">
-              <label className="block text-gray-700 font-medium mb-2">Pilot's UPI ID</label>
-              <input
-                type="text"
-                placeholder="Enter pilot's UPI ID (e.g., pilot@upi)"
-                value={upiId}
-                onChange={e => setUpiId(e.target.value)}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
-              />
-              <p className="text-xs text-gray-500 mt-1">Ask the pilot for their UPI ID</p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowBuddyPayment(false)}
-                className="flex-1 py-2 bg-gray-500 text-white rounded-lg font-semibold hover:bg-gray-600 transition text-sm"
-                disabled={buddyPaymentLoading}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleBuddyPayment}
-                className="flex-1 py-2 bg-gradient-to-r from-green-500 to-green-700 text-white rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm"
-                disabled={buddyPaymentLoading || !upiId.trim()}
-              >
-                {buddyPaymentLoading ? 'Processing...' : 'Confirm Payment'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* My Accepted Trip */}
-      {myAcceptedTrip && (
-        <div className="mb-10 p-6 bg-gradient-to-br from-green-100 to-blue-100 rounded-2xl border border-green-200 shadow-lg">
-          <div className="flex items-center gap-4 mb-4">
-            {myAcceptedTrip.driverPhoto ? (
-              <img src={myAcceptedTrip.driverPhoto} alt="Pilot" className="w-16 h-16 rounded-full border-4 border-green-400 shadow" />
-            ) : (
-              <UserCircle2 className="w-16 h-16 text-green-400" />
-            )}
-            <div>
-              <div className="font-bold text-lg text-gray-800">{myAcceptedTrip.driverName}</div>
-              <div className="text-xs text-gray-600">📧 {myAcceptedTrip.driverEmail}</div>
-              <div className="text-xs text-gray-600">📞 {myAcceptedTrip.driverPhone}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 text-sm text-gray-700 mb-2">
-            <span className="inline-flex items-center gap-1"><span className="text-green-500">📍</span>{myAcceptedTrip.source}</span>
-            <span className="inline-flex items-center gap-1"><span className="text-pink-500">🎯</span>{myAcceptedTrip.destination}</span>
-          </div>
-          {/* Only show fare and payment after paymentInitiated */}
-          {myAcceptedTrip.paymentStatus === 'completed' || buddyPaymentDone ? (
-            <div className="text-green-700 font-semibold mt-2">Payment Completed</div>
-          ) : myAcceptedTrip.paymentInitiated ? (
-            <>
-              <div className="flex items-center gap-2 text-lg font-bold text-green-800 mb-2">
-                <span className="text-yellow-500">💰</span>
-                <span>Fare: ₹{myAcceptedTrip.fare}</span>
-              </div>
-              <button
-                onClick={handleShowBuddyPayment}
-                className="w-full bg-gradient-to-r from-green-500 to-green-700 text-white py-2 rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm mt-2"
-              >
-                Pay Now
-              </button>
-            </>
-          ) : (
-            <div className="text-yellow-700 font-semibold mt-2">Waiting for pilot to initiate payment...</div>
-          )}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -1243,8 +1382,7 @@ function LoginScreen({ onLogin, loading, error }) {
       <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl border border-blue-200">
         <div className="text-center mb-6 sm:mb-8">
           <Car className="w-12 h-12 sm:w-16 sm:h-16 text-blue-600 mx-auto mb-4" />
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-800">COIMBUDDY</h1>
-          <p className="text-gray-600 text-sm sm:text-base">Share rides, save money, go green</p>
+          <AnimatedTitle />
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
@@ -1313,12 +1451,13 @@ function LoginScreen({ onLogin, loading, error }) {
 function UserProfileSetup({ user, onComplete }) {
   const [username, setUsername] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [carType, setCarType] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const handleSaveProfile = async () => {
     if (!username.trim() || !phoneNumber.trim()) {
-      setError('Please fill in all fields');
+      setError('Please fill in all required fields');
       return;
     }
 
@@ -1334,6 +1473,7 @@ function UserProfileSetup({ user, onComplete }) {
         photoURL: user.photoURL,
         username: username.trim(),
         phoneNumber: phoneNumber.trim(),
+        carType: carType.trim() || null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
@@ -1352,8 +1492,7 @@ function UserProfileSetup({ user, onComplete }) {
       <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl border border-blue-200">
         <div className="text-center mb-6 sm:mb-8">
           <Car className="w-12 h-12 sm:w-16 sm:h-16 text-blue-600 mx-auto mb-4" />
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-800">COIMBUDDY</h1>
-          <p className="text-gray-600 text-sm sm:text-base">Complete your profile</p>
+          <AnimatedTitle />
         </div>
         
         <div className="mb-4 sm:mb-6">
@@ -1393,6 +1532,18 @@ function UserProfileSetup({ user, onComplete }) {
               className="w-full p-2 sm:p-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm sm:text-base"
               required
             />
+          </div>
+
+          <div>
+            <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Car Type (Optional)</label>
+            <input
+              type="text"
+              placeholder="e.g., Sedan, SUV, Hatchback"
+              value={carType}
+              onChange={e => setCarType(e.target.value)}
+              className="w-full p-2 sm:p-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm sm:text-base"
+            />
+            <p className="text-xs text-gray-500 mt-1">Pilots can specify their car type for passengers</p>
           </div>
 
           {error && <div className="text-red-600 text-xs sm:text-sm">{error}</div>}
