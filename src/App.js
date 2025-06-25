@@ -14,6 +14,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import BottomNavBar from './BottomNavBar';
 import AnimatedTitle from './AnimatedTitle';
 import TripChart from './TripChart';
+import PlacesAutocompleteInput from './PlacesAutocompleteInput';
 
 const GOOGLE_MAPS_API_KEY = 'AIzaSyB0biE37HC3gkUvKIB_ZfzIk30ZdRARZEM';
 const COIMBATORE_CENTER = { lat: 11.0168, lng: 76.9558 };
@@ -379,7 +380,7 @@ function UserProfilePage({ user, userProfile, onBack, onSignOut }) {
   );
 }
 
-function PilotDashboard({ user, userProfile, onSignOut, onShowProfile }) {
+function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded }) {
   const [source, setSource] = useState('');
   const [destination, setDestination] = useState('');
   const [tripStarted, setTripStarted] = useState(false);
@@ -549,7 +550,7 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile }) {
           </button>
           {saveError && <div className="text-red-600 text-xs sm:text-sm mt-2">{saveError}</div>}
         </div>
-        <MapWithRoute source={source} destination={destination} />
+        <MapWithRoute source={source} destination={destination} isLoaded={isLoaded} />
         {distance && (
           <div className="mb-3 sm:mb-4 text-base sm:text-lg text-green-700 font-semibold">
             Distance: {distance}
@@ -757,7 +758,7 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile }) {
   );
 }
 
-function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
+function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded }) {
   const [source, setSource] = useState('');
   const [destination, setDestination] = useState('');
   const [searching, setSearching] = useState(false);
@@ -778,6 +779,8 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
   const [buddyPaymentMethod, setBuddyPaymentMethod] = useState('');
   const [buddyPaymentLoading, setBuddyPaymentLoading] = useState(false);
   const [buddyTab, setBuddyTab] = useState('book');
+  const [pickupLat, setPickupLat] = useState(null);
+  const [pickupLng, setPickupLng] = useState(null);
 
   // Calculate distance and fare using Google Maps Directions API
   useEffect(() => {
@@ -1003,6 +1006,37 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
     return stars;
   };
 
+  const handleUseMyLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          setPickupLat(lat);
+          setPickupLng(lng);
+          // Reverse geocode to get address
+          if (window.google) {
+            const geocoder = new window.google.maps.Geocoder();
+            geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+              if (status === 'OK' && results[0]) {
+                setSource(results[0].formatted_address);
+              }
+            });
+          }
+        },
+        (error) => {
+          if (error.code === error.PERMISSION_DENIED) {
+            alert('Location permission denied. Please allow location access in your browser settings.');
+          } else {
+            alert('Failed to fetch location: ' + error.message);
+          }
+        }
+      );
+    } else {
+      alert('Geolocation is not supported by your browser.');
+    }
+  };
+
   // Render content based on buddyTab
   let mainContent;
   if (buddyTab === 'book') {
@@ -1012,20 +1046,36 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
         {/* Book Ride UI (search, available trips, etc.) */}
         <div className="mb-4 sm:mb-6 text-left">
           <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Source (Coimbatore)</label>
-          <input
-            type="text"
-            placeholder="Enter source location"
-            value={source}
-            onChange={e => setSource(e.target.value)}
-            className="w-full p-2 sm:p-3 mb-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm sm:text-base"
-          />
+          <div className="flex gap-2 items-center mb-3">
+            <div className="flex-1">
+              <PlacesAutocompleteInput
+                value={source}
+                onChange={setSource}
+                placeholder="Enter source location"
+                onSelect={(desc, lat, lng) => {
+                  setSource(desc);
+                  setPickupLat(lat);
+                  setPickupLng(lng);
+                }}
+                isLoaded={isLoaded}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleUseMyLocation}
+              className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-200 transition"
+              title="Use my current location"
+            >
+              Use My Location
+            </button>
+          </div>
           <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Destination (Coimbatore)</label>
-          <input
-            type="text"
-            placeholder="Enter destination location"
+          <PlacesAutocompleteInput
             value={destination}
-            onChange={e => setDestination(e.target.value)}
-            className="w-full p-2 sm:p-3 mb-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm sm:text-base"
+            onChange={setDestination}
+            placeholder="Enter destination location"
+            onSelect={(desc, lat, lng) => setDestination(desc)}
+            isLoaded={isLoaded}
           />
           <button
             onClick={handleSearch}
@@ -1036,7 +1086,7 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile }) {
           </button>
           {searchError && <div className="text-red-600 text-xs sm:text-sm mt-2">{searchError}</div>}
         </div>
-        <MapWithRoute source={source} destination={destination} />
+        <MapWithRoute source={source} destination={destination} isLoaded={isLoaded} />
         {distance && (
           <div className="mb-3 sm:mb-4 text-base sm:text-lg text-yellow-700 font-semibold">
             Distance: {distance}
@@ -1575,6 +1625,12 @@ function App() {
   const [showProfilePage, setShowProfilePage] = useState(false);
   const navigate = useNavigate();
 
+  // Google Maps API loader at top level
+  const { isLoaded } = useJsApiLoader({
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+    libraries: ['places'],
+  });
+
   // Check if user profile exists
   const checkUserProfile = async (firebaseUser) => {
     if (!firebaseUser) {
@@ -1677,8 +1733,8 @@ function App() {
     setShowProfilePage(false);
   };
 
-  // Show loading while checking user profile
-  if (profileLoading) {
+  // Show loading while checking user profile or Google Maps API
+  if (profileLoading || !isLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-purple-700">
         <div className="bg-white rounded-3xl p-10 shadow-2xl text-center">
@@ -1712,6 +1768,7 @@ function App() {
                 userProfile={userProfile} 
                 onSignOut={handleSignOut}
                 onShowProfile={handleShowProfile}
+                isLoaded={isLoaded}
               />
             ) : (
               <BuddyDashboard 
@@ -1719,6 +1776,7 @@ function App() {
                 userProfile={userProfile} 
                 onSignOut={handleSignOut}
                 onShowProfile={handleShowProfile}
+                isLoaded={isLoaded}
               />
             )
           ) : (
