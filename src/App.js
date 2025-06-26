@@ -9,7 +9,7 @@ import {
   useNavigate
 } from 'react-router-dom';
 import { GoogleMap, useJsApiLoader, DirectionsRenderer } from '@react-google-maps/api';
-import { collection, addDoc, query, where, getDocs, serverTimestamp, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, serverTimestamp, doc, getDoc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import toast, { Toaster } from 'react-hot-toast';
 import BottomNavBar from './BottomNavBar';
 import AnimatedTitle from './AnimatedTitle';
@@ -301,6 +301,62 @@ function UserProfilePage({ user, userProfile, onBack, onSignOut }) {
             )}
           </div>
 
+          {/* Rides Travelled in Last 5 Days */}
+          <div className="mb-10">
+            <div className="flex items-center gap-2 mb-4 px-4 py-2 rounded-xl bg-gradient-to-r from-green-400 to-blue-400 shadow-md border border-green-200">
+              <span className="text-2xl">🚗</span>
+              <h3 className="text-xl font-extrabold text-white tracking-wide">Rides Travelled in Last 5 Days</h3>
+            </div>
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Loading rides...</p>
+              </div>
+            ) : (() => {
+              // Filter bookings to only those in the last 5 days
+              const now = new Date();
+              const fiveDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 4, 0, 0, 0, 0);
+              const last5DaysBookings = bookings
+                .filter(b => {
+                  const d = b.createdAt && b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+                  return d >= fiveDaysAgo && d <= now;
+                })
+                .sort((a, b) => {
+                  const aTime = a.createdAt && a.createdAt.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+                  const bTime = b.createdAt && b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+                  return bTime - aTime;
+                });
+              return last5DaysBookings.length > 0 ? (
+                <ul className="grid sm:grid-cols-2 gap-6">
+                  {last5DaysBookings.map((ride) => (
+                    <li key={ride.id} className="group p-5 bg-white rounded-2xl border border-gray-200 shadow-lg hover:shadow-2xl transition-shadow duration-200 flex flex-col gap-2 hover:border-blue-400">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-green-600 text-lg">🟢</span>
+                        <span className="font-semibold text-gray-800 text-base">{ride.source}</span>
+                        <span className="mx-2 text-gray-400">→</span>
+                        <span className="font-semibold text-gray-800 text-base">{ride.destination}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-500">
+                        <span className="inline-flex items-center gap-1"><span className="text-blue-500">📅</span>{ride.createdAt?.toDate?.() ? ride.createdAt.toDate().toLocaleDateString() : 'Recently'}</span>
+                        <span className="inline-flex items-center gap-1"><span className="text-yellow-500">💰</span>₹{ride.fare}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
+                        <span className="inline-flex items-center gap-1"><span className="text-purple-500">👤</span>Pilot:</span>
+                        <span className="font-medium text-gray-700 group-hover:text-blue-700 transition">{ride.pilotName}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="text-center py-8 bg-gray-50 rounded-xl border border-gray-200">
+                  <div className="text-4xl mb-4">🚗</div>
+                  <p className="text-gray-600">No rides in the last 5 days</p>
+                  <p className="text-sm text-gray-500">Book rides or offer rides to see history</p>
+                </div>
+              );
+            })()}
+          </div>
+
           {/* Rides Travelled This Month (Buddy) */}
           {userProfile && buddyRidesThisMonth.length > 0 && (
             <div className="mb-10">
@@ -344,36 +400,44 @@ function UserProfilePage({ user, userProfile, onBack, onSignOut }) {
               </div>
             ) : bookings.length > 0 ? (
               <ul className="grid sm:grid-cols-2 gap-6">
-                {bookings.map((booking) => (
-                  <li key={booking.id} className="group p-5 bg-white rounded-2xl border border-gray-200 shadow-lg hover:shadow-2xl transition-shadow duration-200 flex flex-col gap-2 hover:border-purple-400">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-blue-600 text-lg">{booking.pilotId === user.uid ? '🚗' : '🚶'}</span>
-                      <span className="font-semibold text-gray-800 text-base">{booking.pilotId === user.uid ? 'You drove' : 'You travelled'}</span>
-                      <span className="ml-auto px-2 py-1 rounded-full text-xs font-medium "
-                        style={{ background: booking.status === 'confirmed' ? '#d1fae5' : '#e5e7eb', color: booking.status === 'confirmed' ? '#065f46' : '#374151' }}>
-                        {booking.status}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-500">
-                      <span className="inline-flex items-center gap-1"><span className="text-green-500">📍</span>{booking.source}</span>
-                      <span className="inline-flex items-center gap-1"><span className="text-pink-500">🎯</span>{booking.destination}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-500">
-                      <span className="inline-flex items-center gap-1"><span className="text-blue-500">📅</span>{booking.createdAt?.toDate?.() ? booking.createdAt.toDate().toLocaleDateString() : 'Recently'}</span>
-                      <span className="inline-flex items-center gap-1"><span className="text-yellow-500">💰</span>₹{booking.fare}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
-                      <span className="inline-flex items-center gap-1"><span className="text-purple-500">👤</span>{booking.pilotId === user.uid ? 'Buddy:' : 'Pilot:'}</span>
-                      <span className="font-medium text-gray-700 group-hover:text-purple-700 transition">{booking.pilotId === user.uid ? booking.buddyName : booking.pilotName}</span>
-                    </div>
-                    <button
-                      onClick={() => handleFinishTrip(booking.id)}
-                      className="w-full bg-gradient-to-r from-red-400 to-red-700 text-white py-2 rounded-lg font-semibold hover:from-red-500 hover:to-red-800 transition text-sm"
-                    >
-                      Finish Trip
-                    </button>
-                  </li>
-                ))}
+                {bookings
+                  .slice()
+                  .sort((a, b) => {
+                    const aTime = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+                    const bTime = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+                    return bTime - aTime;
+                  })
+                  .slice(0, 5)
+                  .map((booking) => (
+                    <li key={booking.id} className="group p-5 bg-white rounded-2xl border border-gray-200 shadow-lg hover:shadow-2xl transition-shadow duration-200 flex flex-col gap-2 hover:border-purple-400">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-blue-600 text-lg">{booking.pilotId === user.uid ? '🚗' : '🚶'}</span>
+                        <span className="font-semibold text-gray-800 text-base">{booking.pilotId === user.uid ? 'You drove' : 'You travelled'}</span>
+                        <span className="ml-auto px-2 py-1 rounded-full text-xs font-medium "
+                          style={{ background: booking.status === 'confirmed' ? '#d1fae5' : '#e5e7eb', color: booking.status === 'confirmed' ? '#065f46' : '#374151' }}>
+                          {booking.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-500">
+                        <span className="inline-flex items-center gap-1"><span className="text-green-500">📍</span>{booking.source}</span>
+                        <span className="inline-flex items-center gap-1"><span className="text-pink-500">🎯</span>{booking.destination}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-500">
+                        <span className="inline-flex items-center gap-1"><span className="text-blue-500">📅</span>{booking.createdAt?.toDate?.() ? booking.createdAt.toDate().toLocaleDateString() : 'Recently'}</span>
+                        <span className="inline-flex items-center gap-1"><span className="text-yellow-500">💰</span>₹{booking.fare}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
+                        <span className="inline-flex items-center gap-1"><span className="text-purple-500">👤</span>{booking.pilotId === user.uid ? 'Buddy:' : 'Pilot:'}</span>
+                        <span className="font-medium text-gray-700 group-hover:text-purple-700 transition">{booking.pilotId === user.uid ? booking.buddyName : booking.pilotName}</span>
+                      </div>
+                      <button
+                        onClick={() => handleFinishTrip(booking.id)}
+                        className="w-full bg-gradient-to-r from-red-400 to-red-700 text-white py-2 rounded-lg font-semibold hover:from-red-500 hover:to-red-800 transition text-sm"
+                      >
+                        Finish Trip
+                      </button>
+                    </li>
+                  ))}
               </ul>
             ) : (
               <div className="text-center py-8 bg-gray-50 rounded-xl border border-gray-200">
@@ -444,7 +508,7 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
       const q = query(
         collection(db, 'trips'),
         where('driverId', '==', user.uid),
-        where('status', '==', 'pending')
+        where('status', 'in', ['pending', 'accepted'])
       );
       const snapshot = await getDocs(q);
       setPendingBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -593,6 +657,47 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
     }
   };
 
+  // In PilotDashboard, filter and sort trips for display
+  // Find the current active trip (accepted or pending, latest tripStartTime)
+  const allActiveTrips = [...pendingBookings, ...acceptedBookings].filter(trip => ['pending', 'accepted'].includes(trip.status));
+  const currentTrip = allActiveTrips.length > 0
+    ? allActiveTrips.reduce((latest, trip) => {
+        const tripTime = trip.tripStartTime?.toDate ? trip.tripStartTime.toDate() : new Date(trip.tripStartTime);
+        const latestTime = latest.tripStartTime?.toDate ? latest.tripStartTime.toDate() : new Date(latest.tripStartTime);
+        return tripTime > latestTime ? trip : latest;
+      }, allActiveTrips[0])
+    : null;
+
+  // Fetch last 5 finished trips for this pilot
+  const [finishedTrips, setFinishedTrips] = useState([]);
+  useEffect(() => {
+    const fetchFinished = async () => {
+      const q = query(
+        collection(db, 'trips'),
+        where('driverId', '==', user.uid),
+        where('status', '==', 'finished')
+      );
+      const snapshot = await getDocs(q);
+      let trips = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Sort by tripStartTime descending
+      trips = trips.sort((a, b) => {
+        const aTime = a.tripStartTime?.toDate ? a.tripStartTime.toDate() : new Date(a.tripStartTime);
+        const bTime = b.tripStartTime?.toDate ? b.tripStartTime.toDate() : new Date(b.tripStartTime);
+        return bTime - aTime;
+      });
+      // If more than 5, delete the oldest
+      if (trips.length > 5) {
+        const toDelete = trips.slice(5);
+        for (const trip of toDelete) {
+          await deleteDoc(doc(db, 'trips', trip.id));
+        }
+        trips = trips.slice(0, 5);
+      }
+      setFinishedTrips(trips);
+    };
+    fetchFinished();
+  }, [user.uid]);
+
   let mainContent;
   if (pilotTab === 'start') {
     mainContent = (
@@ -615,14 +720,7 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
                 isLoaded={isLoaded}
               />
             </div>
-            <button
-              type="button"
-              onClick={handleUseMyLocation}
-              className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-200 transition"
-              title="Use my current location"
-            >
-              Use My Location
-            </button>
+            {/* Removed 'Use My Location' button for pilot section */}
           </div>
           <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Destination (Coimbatore)</label>
           <PlacesAutocompleteInput
@@ -740,17 +838,58 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
         )}
 
         {/* Accepted Bookings */}
-        {acceptedBookings.length > 0 && (
-          <div>
-            <h4 className="text-lg font-bold text-gray-800 mb-3">Active Passengers</h4>
+        <div>
+          <h4 className="text-lg font-bold text-gray-800 mb-3">Current Trip</h4>
+          {currentTrip ? (
             <ul className="space-y-4">
-              {acceptedBookings.map(trip => (
-                <li key={trip.id} className="p-4 bg-green-50 rounded-xl border border-green-200 shadow">
+              <li key={currentTrip.id} className="p-4 bg-green-50 rounded-xl border border-green-200 shadow">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-semibold text-gray-800">{currentTrip.buddyName}</div>
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${currentTrip.paymentInitiated ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{currentTrip.paymentInitiated ? 'Payment Ready' : currentTrip.status.charAt(0).toUpperCase() + currentTrip.status.slice(1)}</span>
+                </div>
+                <div className="text-sm text-gray-600 mb-2">
+                  <div>📞 {currentTrip.buddyPhone || 'No phone'}</div>
+                  <div>📧 {currentTrip.buddyEmail}</div>
+                </div>
+                <div className="text-sm text-gray-500 mb-3">
+                  <div>📍 {currentTrip.source} → 🎯 {currentTrip.destination}</div>
+                  <div>💰 ₹{currentTrip.fare}</div>
+                </div>
+                {currentTrip.status === 'pending' ? (
+                  <button
+                    onClick={() => handleAcceptBooking(currentTrip.id)}
+                    className="w-full bg-gradient-to-r from-green-500 to-green-700 text-white py-2 rounded-lg font-semibold hover:from-green-600 hover:to-green-800 transition text-sm mb-2"
+                  >
+                    Accept Booking
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleStartTripForBuddy(currentTrip.id)}
+                    className="w-full bg-gradient-to-r from-yellow-400 to-green-600 text-white py-2 rounded-lg font-semibold hover:from-yellow-500 hover:to-green-700 transition text-sm"
+                  >
+                    Start Trip
+                  </button>
+                )}
+              </li>
+            </ul>
+          ) : (
+            <div className="text-center py-8 bg-gray-50 rounded-xl border border-gray-200">
+              <div className="text-4xl mb-4">👥</div>
+              <p className="text-gray-600">No current trip</p>
+              <p className="text-sm text-gray-500">Start a trip to receive booking requests</p>
+            </div>
+          )}
+        </div>
+        {/* Last 5 Finished Trips */}
+        <div className="mt-8">
+          <h4 className="text-lg font-bold text-gray-800 mb-3">Last 5 Trips</h4>
+          {finishedTrips.length > 0 ? (
+            <ul className="space-y-4">
+              {finishedTrips.map(trip => (
+                <li key={trip.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200 shadow">
                   <div className="flex items-center justify-between mb-2">
-                    <div className="font-semibold text-gray-800">{trip.buddyName}</div>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${trip.paymentInitiated ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
-                      {trip.paymentInitiated ? 'Payment Ready' : 'Accepted'}
-                    </span>
+                    <div className="font-semibold text-gray-800">{trip.buddyName || 'No Buddy'}</div>
+                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Finished</span>
                   </div>
                   <div className="text-sm text-gray-600 mb-2">
                     <div>📞 {trip.buddyPhone || 'No phone'}</div>
@@ -760,25 +899,17 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
                     <div>📍 {trip.source} → 🎯 {trip.destination}</div>
                     <div>💰 ₹{trip.fare}</div>
                   </div>
-                  {!trip.paymentInitiated && (
-                    <button
-                      onClick={() => handleInitiatePayment(trip.id)}
-                      className="w-full bg-gradient-to-r from-blue-500 to-blue-700 text-white py-2 rounded-lg font-semibold hover:from-blue-600 hover:to-blue-800 transition text-sm mb-2"
-                    >
-                      Initiate Payment
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleStartTripForBuddy(trip.id)}
-                    className="w-full bg-gradient-to-r from-yellow-400 to-green-600 text-white py-2 rounded-lg font-semibold hover:from-yellow-500 hover:to-green-700 transition text-sm"
-                  >
-                    Start Trip
-                  </button>
+                  <div className="text-xs text-gray-400">{trip.tripStartTime?.toDate ? trip.tripStartTime.toDate().toLocaleString() : ''}</div>
                 </li>
               ))}
             </ul>
-          </div>
-        )}
+          ) : (
+            <div className="text-center py-8 bg-gray-50 rounded-xl border border-gray-200">
+              <div className="text-4xl mb-4">🕓</div>
+              <p className="text-gray-600">No past trips</p>
+            </div>
+          )}
+        </div>
 
         {pendingBookings.length === 0 && acceptedBookings.length === 0 && (
           <div className="text-center py-8 bg-gray-50 rounded-xl border border-gray-200">
@@ -838,7 +969,7 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
             </div>
             <div className="p-3 bg-white rounded-lg border border-gray-200">
               <div className="text-sm text-gray-500">Email</div>
-              <div className="font-semibold text-gray-800">{user.email}</div>
+              <div className="font-semibold text-gray-800 break-words" style={{wordBreak: 'break-word'}}>{user.email}</div>
             </div>
             <div className="p-3 bg-white rounded-lg border border-gray-200">
               <div className="text-sm text-gray-500">Car Type</div>
@@ -848,19 +979,10 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
         </div>
 
         {/* Trips Chart */}
-        <div className="mb-6 p-6 bg-white rounded-2xl border border-gray-200 shadow-lg">
-          <h3 className="text-xl font-bold text-gray-800 mb-4">Trips in Last 5 Days</h3>
-          <TripChart tripData={[3, 5, 2, 7, 4]} />
-        </div>
+        
 
         {/* Action Buttons */}
         <div className="space-y-3">
-          <button
-            onClick={onShowProfile}
-            className="w-full bg-gradient-to-r from-blue-500 to-blue-700 text-white px-4 py-3 rounded-lg font-semibold shadow hover:from-blue-600 hover:to-blue-800 transition"
-          >
-            View Full Profile
-          </button>
           <button
             onClick={onSignOut}
             className="w-full bg-gradient-to-r from-red-500 to-red-700 text-white px-4 py-3 rounded-lg font-semibold shadow hover:from-red-600 hover:to-red-800 transition"
@@ -1087,13 +1209,28 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
     }
     setBuddyPaymentLoading(true);
     try {
+      // Mark payment as completed
       await updateDoc(doc(db, 'trips', myAcceptedTrip.id), {
         paymentStatus: 'completed',
         paymentMethod: 'upi',
-        upiId: upiId
+        upiId: upiId,
+        buddyId: '',
+        buddyName: '',
+        buddyEmail: '',
+        buddyPhone: '',
+        status: 'finished',
       });
+      // Delete the booking record for this trip
+      const bookingsQuery = query(
+        collection(db, 'bookings'),
+        where('tripId', '==', myAcceptedTrip.id)
+      );
+      const bookingsSnapshot = await getDocs(bookingsQuery);
+      for (const docSnap of bookingsSnapshot.docs) {
+        await deleteDoc(doc(db, 'bookings', docSnap.id));
+      }
       setBuddyPaymentDone(true);
-      toast.success('Payment completed!');
+      toast.success('Payment completed! Booking removed.');
     } catch (err) {
       toast.error('Payment failed.');
       console.error('Error in buddy payment:', err);
@@ -1381,7 +1518,7 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
     );
   } else if (buddyTab === 'bookings') {
     mainContent = (
-      <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl text-center border border-yellow-200 mb-10 mx-auto">
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl text-center border border-yellow-200 mb-10 mx-auto min-h-[350px] max-h-[500px] overflow-y-auto">
         <AnimatedTitle />
         <div className="flex items-center gap-2 mb-4 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-400 to-purple-400 shadow-md border border-blue-200">
           <span className="text-2xl">📚</span>
@@ -1421,15 +1558,9 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
     );
   } else if (buddyTab === 'account') {
     mainContent = (
-      <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl text-center border border-yellow-200 mb-10 mx-auto">
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl text-center border border-yellow-200 mb-10 mx-auto min-h-[350px] max-h-[500px] overflow-y-auto">
         <AnimatedTitle />
         <UserProfile user={user} userProfile={userProfile} />
-        <button
-          onClick={onShowProfile}
-          className="w-full bg-gradient-to-r from-blue-500 to-blue-700 text-white px-4 py-2 rounded-lg font-semibold shadow hover:from-blue-600 hover:to-blue-800 transition text-sm mt-2"
-        >
-          View Full Profile
-        </button>
         <button
           onClick={onSignOut}
           className="w-full bg-gradient-to-r from-red-500 to-red-700 text-white px-4 py-2 rounded-lg font-semibold shadow hover:from-red-600 hover:to-red-800 transition text-sm mt-2"

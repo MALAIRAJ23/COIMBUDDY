@@ -1,38 +1,49 @@
 import React from 'react';
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+
+// Colors for fare ranges
+const COLORS = ['#60a5fa', '#fbbf24', '#34d399', '#ef4444'];
+const getColor = (fare) => {
+  if (fare < 100) return COLORS[0];
+  if (fare < 150) return COLORS[1];
+  if (fare < 200) return COLORS[2];
+  return COLORS[3];
+};
 
 export default function TripChart({ tripData = [] }) {
-  // Sample data for the last 5 days
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-  const maxTrips = Math.max(...tripData, 1); // Prevent division by zero
+  // tripData: array of fares for last 5 days
+  const data = tripData.map((fare, i) => ({
+    name: `Day ${i + 1}`,
+    value: fare,
+    color: getColor(fare)
+  }));
 
   return (
     <div className="h-64 bg-gray-50 rounded-lg border border-gray-200 p-4">
-      <div className="flex items-end justify-between h-48 mb-4">
-        {days.map((day, index) => {
-          const tripCount = tripData[index] || 0;
-          const height = (tripCount / maxTrips) * 100;
-          return (
-            <div key={day} className="flex flex-col items-center flex-1">
-              <div 
-                className="w-full bg-gradient-to-t from-blue-500 to-blue-300 rounded-t-lg transition-all duration-300 hover:from-blue-600 hover:to-blue-400"
-                style={{ height: `${height}%` }}
-              >
-                <div className="text-white text-xs font-bold text-center mt-1">
-                  {tripCount}
-                </div>
-              </div>
-              <div className="text-xs text-gray-600 mt-2 font-medium">{day}</div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="text-center">
-        <div className="text-sm text-gray-600">
-          Total Trips: {tripData.reduce((sum, count) => sum + count, 0)}
-        </div>
-        <div className="text-xs text-gray-500 mt-1">
-          Last 5 days activity
-        </div>
+      <ResponsiveContainer width="100%" height={220}>
+        <PieChart>
+          <Pie
+            data={data}
+            dataKey="value"
+            nameKey="name"
+            cx="50%"
+            cy="50%"
+            outerRadius={80}
+            label={({ name, value }) => `${name}: ₹${value}`}
+          >
+            {data.map((entry, idx) => (
+              <Cell key={`cell-${idx}`} fill={entry.color} />
+            ))}
+          </Pie>
+          <Tooltip formatter={(value) => `₹${value}`} />
+          <Legend />
+        </PieChart>
+      </ResponsiveContainer>
+      <div className="text-center mt-2 text-xs text-gray-500">
+        <div><span style={{ color: COLORS[0] }}>●</span> &lt; ₹100</div>
+        <div><span style={{ color: COLORS[1] }}>●</span> ₹100-₹149</div>
+        <div><span style={{ color: COLORS[2] }}>●</span> ₹150-₹199</div>
+        <div><span style={{ color: COLORS[3] }}>●</span> ₹200+</div>
       </div>
     </div>
   );
