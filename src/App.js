@@ -363,6 +363,12 @@ function UserProfilePage({ user, userProfile, onBack, onSignOut }) {
                       <span className="inline-flex items-center gap-1"><span className="text-purple-500">👤</span>{booking.pilotId === user.uid ? 'Buddy:' : 'Pilot:'}</span>
                       <span className="font-medium text-gray-700 group-hover:text-purple-700 transition">{booking.pilotId === user.uid ? booking.buddyName : booking.pilotName}</span>
                     </div>
+                    <button
+                      onClick={() => handleFinishTrip(booking.id)}
+                      className="w-full bg-gradient-to-r from-red-400 to-red-700 text-white py-2 rounded-lg font-semibold hover:from-red-500 hover:to-red-800 transition text-sm"
+                    >
+                      Finish Trip
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -392,6 +398,10 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
   const [pendingBookings, setPendingBookings] = useState([]);
   const [acceptedBookings, setAcceptedBookings] = useState([]);
   const [pilotTab, setPilotTab] = useState('start');
+  const [pickupLat, setPickupLat] = useState(null);
+  const [pickupLng, setPickupLng] = useState(null);
+  const [tripStartTime, setTripStartTime] = useState('');
+  const [tripStartedNotified, setTripStartedNotified] = useState(false);
 
   // Calculate distance and fare using Google Maps Directions API
   useEffect(() => {
@@ -453,8 +463,8 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
   }, [user.uid]);
 
   const handleStartTrip = async () => {
-    if (!source.trim() || !destination.trim()) {
-      alert('Please enter both source and destination');
+    if (!source.trim() || !destination.trim() || !tripStartTime) {
+      alert('Please enter source, destination, and trip start time');
       return;
     }
     setTripStarted(true);
@@ -477,6 +487,7 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
         createdAt: serverTimestamp(),
         active: true,
         status: 'available',
+        tripStartTime: tripStartTime ? new Date(tripStartTime) : null,
       };
       console.log('Creating trip:', tripData);
       await addDoc(collection(db, 'trips'), tripData);
@@ -518,6 +529,67 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
     }
   };
 
+  // Add geolocation handler for pilot
+  const handleUseMyLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          setPickupLat(lat);
+          setPickupLng(lng);
+          // Reverse geocode to get address
+          if (window.google) {
+            const geocoder = new window.google.maps.Geocoder();
+            geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+              if (status === 'OK' && results[0]) {
+                setSource(results[0].formatted_address);
+              }
+            });
+          }
+        },
+        (error) => {
+          if (error.code === error.PERMISSION_DENIED) {
+            alert('Location permission denied. Please allow location access in your browser settings.');
+          } else {
+            alert('Failed to fetch location: ' + error.message);
+          }
+        }
+      );
+    } else {
+      alert('Geolocation is not supported by your browser.');
+    }
+  };
+
+  const handleStartTripForBuddy = async (tripId) => {
+    try {
+      await updateDoc(doc(db, 'trips', tripId), {
+        tripStarted: true,
+        tripStartedAt: serverTimestamp(),
+      });
+      toast.success('Trip started! Buddy will be notified.');
+    } catch (err) {
+      toast.error('Failed to start trip.');
+      console.error('Error starting trip:', err);
+    }
+  };
+
+  const handleFinishTrip = async (bookingId) => {
+    try {
+      await updateDoc(doc(db, 'trips', bookingId), {
+        status: 'finished',
+        buddyId: '',
+        buddyName: '',
+        buddyEmail: '',
+        buddyPhone: '',
+      });
+      toast.success('Trip finished and buddy details removed.');
+    } catch (err) {
+      toast.error('Failed to finish trip.');
+      console.error('Error finishing trip:', err);
+    }
+  };
+
   let mainContent;
   if (pilotTab === 'start') {
     mainContent = (
@@ -526,19 +598,42 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
         <h2 className="text-xl sm:text-2xl font-bold mb-2 text-gray-800">Start Your Ride</h2>
         <div className="mb-4 sm:mb-6 text-left">
           <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Source (Coimbatore)</label>
-          <input
-            type="text"
-            placeholder="Enter source location"
-            value={source}
-            onChange={e => setSource(e.target.value)}
-            className="w-full p-2 sm:p-3 mb-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-green-400 text-sm sm:text-base"
-          />
+          <div className="flex gap-2 items-center mb-3">
+            <div className="flex-1">
+              <PlacesAutocompleteInput
+                value={source}
+                onChange={setSource}
+                placeholder="Enter source location"
+                onSelect={(desc, lat, lng) => {
+                  setSource(desc);
+                  setPickupLat(lat);
+                  setPickupLng(lng);
+                }}
+                isLoaded={isLoaded}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleUseMyLocation}
+              className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-200 transition"
+              title="Use my current location"
+            >
+              Use My Location
+            </button>
+          </div>
           <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Destination (Coimbatore)</label>
-          <input
-            type="text"
-            placeholder="Enter destination location"
+          <PlacesAutocompleteInput
             value={destination}
-            onChange={e => setDestination(e.target.value)}
+            onChange={setDestination}
+            placeholder="Enter destination location"
+            onSelect={(desc, lat, lng) => setDestination(desc)}
+            isLoaded={isLoaded}
+          />
+          <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base mt-3">Trip Start Time</label>
+          <input
+            type="datetime-local"
+            value={tripStartTime}
+            onChange={e => setTripStartTime(e.target.value)}
             className="w-full p-2 sm:p-3 mb-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-green-400 text-sm sm:text-base"
           />
           <button
@@ -578,7 +673,38 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
           <span className="text-2xl">👥</span>
           <h3 className="text-lg font-extrabold text-white tracking-wide">Booked Passengers</h3>
         </div>
-        
+        {/* Notification Bar for Pending Bookings */}
+        {pendingBookings.length > 0 && (
+          <div className="space-y-3 mb-6">
+            {pendingBookings.map(trip => {
+              // Show scheduled trip start time
+              let tripTimeStr = '';
+              if (trip.tripStartTime) {
+                const tripDate = trip.tripStartTime.toDate ? trip.tripStartTime.toDate() : new Date(trip.tripStartTime);
+                tripTimeStr = tripDate.toLocaleString(undefined, {
+                  year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true
+                });
+              }
+              return (
+                <div key={trip.id} className="flex flex-col sm:flex-row items-start sm:items-center gap-2 px-4 py-3 rounded-xl bg-blue-100 border border-blue-300 shadow">
+                  <div className="flex-1">
+                    <div className="font-bold text-blue-900 text-base sm:text-lg mb-1">New Booking Request!</div>
+                    <div className="text-sm text-blue-800 mb-1">Buddy: <span className="font-semibold">{trip.buddyName}</span></div>
+                    <div className="text-sm text-blue-800 mb-1">Phone: <span className="font-semibold">{trip.buddyPhone || 'No phone'}</span></div>
+                    <div className="text-sm text-blue-800 mb-1">Pickup Point: <span className="font-semibold">{trip.source}</span></div>
+                    <div className="text-xs text-blue-700">Trip Time: <span className="font-semibold">{tripTimeStr}</span></div>
+                  </div>
+                  <button
+                    onClick={() => handleAcceptBooking(trip.id)}
+                    className="mt-2 sm:mt-0 bg-gradient-to-r from-green-500 to-green-700 text-white px-4 py-2 rounded-lg font-semibold shadow hover:from-green-600 hover:to-green-800 transition text-sm"
+                  >
+                    Accept Booking
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
         {/* Pending Bookings */}
         {pendingBookings.length > 0 && (
           <div className="mb-6">
@@ -634,11 +760,17 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
                   {!trip.paymentInitiated && (
                     <button
                       onClick={() => handleInitiatePayment(trip.id)}
-                      className="w-full bg-gradient-to-r from-blue-500 to-blue-700 text-white py-2 rounded-lg font-semibold hover:from-blue-600 hover:to-blue-800 transition text-sm"
+                      className="w-full bg-gradient-to-r from-blue-500 to-blue-700 text-white py-2 rounded-lg font-semibold hover:from-blue-600 hover:to-blue-800 transition text-sm mb-2"
                     >
                       Initiate Payment
                     </button>
                   )}
+                  <button
+                    onClick={() => handleStartTripForBuddy(trip.id)}
+                    className="w-full bg-gradient-to-r from-yellow-400 to-green-600 text-white py-2 rounded-lg font-semibold hover:from-yellow-500 hover:to-green-700 transition text-sm"
+                  >
+                    Start Trip
+                  </button>
                 </li>
               ))}
             </ul>
@@ -658,31 +790,24 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
     mainContent = (
       <div className="mb-8">
         <AnimatedTitle />
-        <div className="p-6 bg-gradient-to-br from-blue-100 to-green-100 rounded-2xl border border-blue-200 shadow-lg">
-          <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">Contact & Support</h3>
-          
+        <div className="p-6 bg-gradient-to-br from-blue-100 to-green-100 rounded-2xl border border-blue-200 shadow-lg text-center">
+          <h3 className="text-lg font-bold text-gray-800 mb-4">Contact & Support</h3>
           <div className="space-y-4">
             <div className="p-4 bg-white rounded-xl border border-blue-200">
+              <h4 className="font-semibold text-blue-800 mb-2">📞 Toll-Free 24/7 Support</h4>
+              <div className="text-green-700 font-bold text-lg mb-1">1800-123-4567</div>
+              <div className="text-xs text-gray-500">Available 24/7 for all users</div>
+            </div>
+            <div className="p-4 bg-white rounded-xl border border-blue-200">
               <h4 className="font-semibold text-blue-800 mb-2">📧 Email Support</h4>
-              <p className="text-gray-700 mb-2">For technical issues or account problems:</p>
               <a href="mailto:support@coimbuddy.com" className="text-blue-600 font-semibold underline">support@coimbuddy.com</a>
             </div>
-            
-            <div className="p-4 bg-white rounded-xl border border-green-200">
-              <h4 className="font-semibold text-green-800 mb-2">📞 Emergency Contact</h4>
-              <p className="text-gray-700 mb-2">For urgent safety concerns:</p>
-              <div className="text-green-600 font-semibold">+91 98765 43210</div>
-            </div>
-            
             <div className="p-4 bg-white rounded-xl border border-purple-200">
-              <h4 className="font-semibold text-purple-800 mb-2">💬 Live Chat</h4>
-              <p className="text-gray-700 mb-2">Available 24/7 for quick assistance</p>
-              <button className="bg-purple-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-purple-600 transition">
-                Start Chat
-              </button>
+              <h4 className="font-semibold text-purple-800 mb-2">🤖 AI Chatbot</h4>
+              <p className="text-gray-700 mb-2">Get instant answers to your questions with our AI-powered support.</p>
+              <button className="bg-purple-600 text-white px-6 py-3 rounded-lg font-bold text-base shadow hover:bg-purple-700 transition">Chat with AI Support</button>
             </div>
           </div>
-          
           <div className="mt-6 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
             <p className="text-sm text-yellow-800 text-center">
               <strong>Response Time:</strong> We usually respond within 2-4 hours during business hours.
@@ -781,6 +906,8 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
   const [buddyTab, setBuddyTab] = useState('book');
   const [pickupLat, setPickupLat] = useState(null);
   const [pickupLng, setPickupLng] = useState(null);
+  const [desiredTime, setDesiredTime] = useState('');
+  const [tripStartedNotified, setTripStartedNotified] = useState(false);
 
   // Calculate distance and fare using Google Maps Directions API
   useEffect(() => {
@@ -830,14 +957,15 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
   }, [user.uid]);
 
   const handleSearch = async () => {
-    if (source && destination) {
+    if (source && destination && desiredTime) {
       setSearching(true);
       setSearchError('');
       setAvailableTrips([]);
       try {
         const normSource = normalizePlace(source);
         const normDest = normalizePlace(destination);
-        console.log('Searching for trips with:', normSource, normDest);
+        const desiredDate = new Date(desiredTime);
+        const windowMs = 30 * 60 * 1000; // 30 minutes in ms
         const q = query(
           collection(db, 'trips'),
           where('source', '==', normSource),
@@ -847,7 +975,12 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
         );
         const querySnapshot = await getDocs(q);
         let trips = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        console.log('Fetched trips:', trips);
+        // Filter by time window
+        trips = trips.filter(trip => {
+          if (!trip.tripStartTime) return false;
+          const tripTime = trip.tripStartTime.toDate ? trip.tripStartTime.toDate() : new Date(trip.tripStartTime);
+          return Math.abs(tripTime - desiredDate) <= windowMs;
+        });
         // Sort trips by pilot ratings (highest first)
         const tripsWithRatings = await Promise.all(
           trips.map(async (trip) => {
@@ -879,9 +1012,8 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
           return b.ratingCount - a.ratingCount;
         });
         setAvailableTrips(tripsWithRatings);
-        console.log('Trips with ratings:', tripsWithRatings);
         if (tripsWithRatings.length === 0) {
-          toast('No pilots found for this route.', { icon: '🕵️' });
+          toast('No pilots found for this route and time.', { icon: '🕵️' });
         }
       } catch (err) {
         setSearchError('Failed to search for trips. Please try again.');
@@ -890,73 +1022,47 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
         setSearching(false);
       }
     } else {
-      alert('Please enter both source and destination');
+      alert('Please enter source, destination, and desired time');
     }
   };
 
   const handleBookRide = async (trip) => {
-    setBookingTrip(trip);
-  };
-
-  const confirmBooking = async () => {
-    if (!bookingTrip) return;
-    setShowPayment(true);
-  };
-
-  const processPayment = async () => {
-    if (!paymentMethod || !upiId.trim()) {
-      alert('Please select payment method and enter UPI ID');
-      return;
-    }
-    setPaymentLoading(true);
+    setBookingLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
       const updateData = {
         status: 'pending',
         buddyId: user.uid,
         buddyName: userProfile?.username || user.displayName || '',
         buddyEmail: user.email,
         buddyPhone: userProfile?.phoneNumber || '',
-        paymentMethod: paymentMethod,
-        upiId: upiId,
-        paymentStatus: 'completed',
       };
-      console.log('Updating trip for booking:', bookingTrip.id, updateData);
-      await updateDoc(doc(db, 'trips', bookingTrip.id), updateData);
+      await updateDoc(doc(db, 'trips', trip.id), updateData);
       // Create booking record for history
       const bookingData = {
-        tripId: bookingTrip.id,
-        pilotId: bookingTrip.driverId,
-        pilotName: bookingTrip.driverName,
-        pilotEmail: bookingTrip.driverEmail,
-        pilotPhone: bookingTrip.driverPhone,
+        tripId: trip.id,
+        pilotId: trip.driverId,
+        pilotName: trip.driverName,
+        pilotEmail: trip.driverEmail,
+        pilotPhone: trip.driverPhone,
         buddyId: user.uid,
         buddyName: userProfile?.username || user.displayName || '',
         buddyEmail: user.email,
         buddyPhone: userProfile?.phoneNumber || '',
-        source: bookingTrip.source,
-        destination: bookingTrip.destination,
-        fare: bookingTrip.fare,
-        distance: bookingTrip.distance,
-        paymentMethod: paymentMethod,
-        upiId: upiId,
-        paymentStatus: 'completed',
+        source: trip.source,
+        destination: trip.destination,
+        fare: trip.fare,
+        distance: trip.distance,
         status: 'pending',
         createdAt: serverTimestamp(),
       };
-      console.log('Creating booking record:', bookingData);
       await addDoc(collection(db, 'bookings'), bookingData);
-      setAvailableTrips(prev => prev.filter(trip => trip.id !== bookingTrip.id));
-      setBookingTrip(null);
-      setShowPayment(false);
-      setPaymentMethod('');
-      setUpiId('');
+      setAvailableTrips(prev => prev.filter(t => t.id !== trip.id));
       toast.success('Booking request sent! Waiting for pilot to accept.');
     } catch (err) {
-      alert('Payment failed. Please try again.');
-      console.error('Error processing payment:', err);
+      alert('Booking failed. Please try again.');
+      console.error('Error booking trip:', err);
     } finally {
-      setPaymentLoading(false);
+      setBookingLoading(false);
     }
   };
 
@@ -1076,6 +1182,13 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
             placeholder="Enter destination location"
             onSelect={(desc, lat, lng) => setDestination(desc)}
             isLoaded={isLoaded}
+          />
+          <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base mt-3">Desired Trip Time</label>
+          <input
+            type="datetime-local"
+            value={desiredTime}
+            onChange={e => setDesiredTime(e.target.value)}
+            className="w-full p-2 sm:p-3 mb-3 border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm sm:text-base"
           />
           <button
             onClick={handleSearch}
@@ -1350,7 +1463,7 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
     );
   } else if (buddyTab === 'bookings') {
     mainContent = (
-      <div className="mb-10">
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl text-center border border-yellow-200 mb-10 mx-auto">
         <AnimatedTitle />
         <div className="flex items-center gap-2 mb-4 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-400 to-purple-400 shadow-md border border-blue-200">
           <span className="text-2xl">📚</span>
@@ -1362,17 +1475,35 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
     );
   } else if (buddyTab === 'contact') {
     mainContent = (
-      <div className="mb-10 p-6 bg-gradient-to-br from-blue-100 to-green-100 rounded-2xl border border-blue-200 shadow-lg text-center">
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl text-center border border-yellow-200 mb-10 mx-auto">
         <AnimatedTitle />
-        <h3 className="text-lg font-bold text-gray-800 mb-2">Contact Support</h3>
-        <p className="text-gray-700 mb-2">For help or feedback, email us at:</p>
-        <a href="mailto:support@coimbuddy.com" className="text-blue-600 font-semibold underline">support@coimbuddy.com</a>
-        <p className="text-gray-500 mt-4">We usually respond within 24 hours.</p>
+        <h3 className="text-lg font-bold text-gray-800 mb-4">Contact & Support</h3>
+        <div className="space-y-4">
+          <div className="p-4 bg-white rounded-xl border border-blue-200">
+            <h4 className="font-semibold text-blue-800 mb-2">📞 Toll-Free 24/7 Support</h4>
+            <div className="text-green-700 font-bold text-lg mb-1">1800-123-4567</div>
+            <div className="text-xs text-gray-500">Available 24/7 for all users</div>
+          </div>
+          <div className="p-4 bg-white rounded-xl border border-blue-200">
+            <h4 className="font-semibold text-blue-800 mb-2">📧 Email Support</h4>
+            <a href="mailto:support@coimbuddy.com" className="text-blue-600 font-semibold underline">support@coimbuddy.com</a>
+          </div>
+          <div className="p-4 bg-white rounded-xl border border-purple-200">
+            <h4 className="font-semibold text-purple-800 mb-2">🤖 AI Chatbot</h4>
+            <p className="text-gray-700 mb-2">Get instant answers to your questions with our AI-powered support.</p>
+            <button className="bg-purple-600 text-white px-6 py-3 rounded-lg font-bold text-base shadow hover:bg-purple-700 transition">Chat with AI Support</button>
+          </div>
+        </div>
+        <div className="mt-6 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
+          <p className="text-sm text-yellow-800 text-center">
+            <strong>Response Time:</strong> We usually respond within 2-4 hours during business hours.
+          </p>
+        </div>
       </div>
     );
   } else if (buddyTab === 'account') {
     mainContent = (
-      <div className="mb-10">
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 w-full max-w-sm sm:max-w-md shadow-2xl text-center border border-yellow-200 mb-10 mx-auto">
         <AnimatedTitle />
         <UserProfile user={user} userProfile={userProfile} />
         <button
