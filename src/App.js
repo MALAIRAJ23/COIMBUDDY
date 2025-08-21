@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Car, UserCircle2, MapPin, MessageCircle, Phone, MapPin as MapPinIcon } from 'lucide-react';
 import RouteVisualizer from './RouteVisualizer';
-import ChatSystem from './ChatSystem';
+import EnhancedChatSystem from './components/EnhancedChatSystem';
 import { auth, db } from './firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import {
@@ -17,6 +17,8 @@ import BottomNavBar from './BottomNavBar';
 import AnimatedTitle from './AnimatedTitle';
 import TripChart from './TripChart';
 import PlacesAutocompleteInput from './PlacesAutocompleteInput';
+import AnalyticsDashboard from './components/AnalyticsDashboard';
+import notificationService from './services/NotificationService';
 
 const GOOGLE_MAPS_API_KEY = 'AIzaSyB0biE37HC3gkUvKIB_ZfzIk30ZdRARZEM';
 const COIMBATORE_CENTER = { lat: 11.0168, lng: 76.9558 };
@@ -1115,7 +1117,7 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
         
         {activeChatTrip ? (
           <div className="h-96">
-            <ChatSystem
+            <EnhancedChatSystem
               tripId={activeChatTrip.id}
               pilotId={user.uid}
               buddyId={activeChatTrip.buddyId}
@@ -1334,6 +1336,20 @@ function PilotDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
               <strong>Response Time:</strong> We usually respond within 2-4 hours during business hours.
             </p>
           </div>
+        </div>
+      </div>
+    );
+  } else if (pilotTab === 'analytics') {
+    mainContent = (
+      <div className="mb-8">
+        <AnimatedTitle />
+        <div className="flex items-center gap-2 mb-4 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-400 to-blue-400 shadow-md border border-purple-200">
+          <span className="text-2xl">📊</span>
+          <h3 className="text-lg font-extrabold text-white tracking-wide">Analytics Dashboard</h3>
+        </div>
+        
+        <div className="h-96 overflow-y-auto">
+          <AnalyticsDashboard userId={user.uid} userType="pilot" />
         </div>
       </div>
     );
@@ -2380,7 +2396,7 @@ function BuddyDashboard({ user, userProfile, onSignOut, onShowProfile, isLoaded 
         
         {activeChatTrip ? (
           <div className="h-96">
-            <ChatSystem
+            <EnhancedChatSystem
               tripId={activeChatTrip.id}
               pilotId={activeChatTrip.driverId}
               buddyId={user.uid}
@@ -2764,10 +2780,14 @@ function App() {
         setRole(null);
         setUserProfile(null);
         setProfileLoading(false);
+        // Cleanup notification service
+        await notificationService.cleanup();
         navigate('/');
       } else {
         setProfileLoading(true);
         await checkUserProfile(firebaseUser);
+        // Initialize notification service for the user
+        await notificationService.initializeForUser(firebaseUser.uid);
       }
     });
     return () => unsubscribe();

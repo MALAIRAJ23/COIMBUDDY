@@ -1,5 +1,5 @@
 import React from 'react';
-import { Car, Book, Phone, UserCircle2, Play, Users, MessageCircle, MapPin, Clock, Star } from 'lucide-react';
+import { Car, Book, Phone, UserCircle2, Play, Users, MessageCircle, MapPin, Clock, Star, TrendingUp } from 'lucide-react';
 
 const buddyTabs = [
   { key: 'book', label: 'Book Ride', icon: Car, color: 'primary' },
@@ -13,6 +13,7 @@ const pilotTabs = [
   { key: 'start', label: 'Start Trip', icon: Play, color: 'primary' },
   { key: 'passengers', label: 'Passengers', icon: Users, color: 'secondary' },
   { key: 'chat', label: 'Chat', icon: MessageCircle, color: 'success' },
+  { key: 'analytics', label: 'Analytics', icon: TrendingUp, color: 'info' },
   { key: 'contact', label: 'Support', icon: Phone, color: 'warning' },
   { key: 'account', label: 'Profile', icon: UserCircle2, color: 'danger' },
 ];

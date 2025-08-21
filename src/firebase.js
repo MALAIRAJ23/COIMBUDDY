@@ -3,6 +3,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getMessaging, isSupported } from "firebase/messaging";
 
 // Replace with your own Firebase project config
 const firebaseConfig = {
@@ -13,7 +14,7 @@ const firebaseConfig = {
     messagingSenderId: "623408792304",
     appId: "1:623408792304:web:a3b62bd358d0268529f835",
     measurementId: "G-CEXMTTWV9W"
-  };
+};
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -24,9 +25,23 @@ const auth = getAuth(app);
 // Initialize Firestore
 const db = getFirestore(app);
 
-// Optional: disable app verification in development
-if (process.env.NODE_ENV === "development") {
-  auth.settings.appVerificationDisabledForTesting = true;
+// Initialize Messaging (only if supported)
+let messaging = null;
+if (typeof window !== 'undefined') {
+    isSupported().then((supported) => {
+        if (supported) {
+            messaging = getMessaging(app);
+        }
+    });
 }
 
-export { auth, db };
+// Optional: disable app verification in development
+if (process.env.NODE_ENV === "development") {
+    auth.settings.appVerificationDisabledForTesting = true;
+}
+
+// VAPID key for web push notifications
+export const VAPID_KEY = "YOUR_VAPID_PUBLIC_KEY"; // Replace with your VAPID key
+
+// Export messaging instance
+export { auth, db, messaging, app };
