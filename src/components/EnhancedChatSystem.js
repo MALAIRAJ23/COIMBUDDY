@@ -1,33 +1,32 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  collection,
-  doc,
-  addDoc,
-  onSnapshot,
-  query,
-  orderBy,
-  serverTimestamp,
+import { 
+  collection, 
+  doc, 
+  addDoc, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  serverTimestamp, 
   updateDoc,
   where,
-  limit,
-  setDoc // Added setDoc here
+  limit
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { COLLECTIONS } from '../firebase/collections';
 import { Send, MapPin, Clock, User, Car, MessageCircle, Phone, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const EnhancedChatSystem = ({
-  tripId,
-  pilotId,
-  buddyId,
-  pilotName,
-  buddyName,
-  rideStatus,
+const EnhancedChatSystem = ({ 
+  tripId, 
+  pilotId, 
+  buddyId, 
+  pilotName, 
+  buddyName, 
+  rideStatus, 
   pickupPoint,
   destination,
   currentUserId,
-  onRideStatusUpdate
+  onRideStatusUpdate 
 }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
@@ -59,10 +58,10 @@ const EnhancedChatSystem = ({
           where('tripId', '==', tripId),
           where('participants', 'array-contains', currentUserId)
         );
-
+        
         const unsubscribe = onSnapshot(chatQuery, (snapshot) => {
           const existingChat = snapshot.docs[0];
-
+          
           if (existingChat) {
             setChatId(existingChat.id);
             setIsChatActive(existingChat.data().isActive);
@@ -104,7 +103,7 @@ const EnhancedChatSystem = ({
         const chatRef = await addDoc(collection(db, COLLECTIONS.CHATS), chatData);
         setChatId(chatRef.id);
         setIsChatActive(true);
-
+        
         // Send welcome message
         await sendSystemMessage('🚗 Chat started! You can now communicate with your ride partner.');
       } catch (error) {
@@ -134,16 +133,16 @@ const EnhancedChatSystem = ({
         ...doc.data(),
         timestamp: doc.data().timestamp?.toDate?.() || new Date()
       }));
-
+      
       setMessages(newMessages);
-
+      
       // Update unread count
-      const unread = newMessages.filter(msg =>
-        msg.senderId !== currentUserId &&
+      const unread = newMessages.filter(msg => 
+        msg.senderId !== currentUserId && 
         !msg.readBy?.includes(currentUserId)
       ).length;
       setUnreadCount(unread);
-
+      
       // Mark messages as read
       if (unread > 0) {
         markMessagesAsRead();
@@ -230,7 +229,7 @@ const EnhancedChatSystem = ({
       };
 
       await addDoc(collection(db, COLLECTIONS.CHATS, chatId, COLLECTIONS.MESSAGES), messageData);
-
+      
       // Update chat's last message timestamp
       await updateDoc(doc(db, COLLECTIONS.CHATS, chatId), {
         lastMessageAt: serverTimestamp()
@@ -261,7 +260,7 @@ const EnhancedChatSystem = ({
       timestamp: serverTimestamp()
     }).catch(() => {
       // Create if doesn't exist
-      setDoc(typingRef, { // Changed addDoc to setDoc
+      addDoc(collection(db, COLLECTIONS.CHATS, chatId, 'typing'), {
         userId: currentUserId,
         timestamp: serverTimestamp()
       });
@@ -281,8 +280,8 @@ const EnhancedChatSystem = ({
     if (!chatId) return;
 
     try {
-      const unreadMessages = messages.filter(msg =>
-        msg.senderId !== currentUserId &&
+      const unreadMessages = messages.filter(msg => 
+        msg.senderId !== currentUserId && 
         !msg.readBy?.includes(currentUserId)
       );
 
@@ -378,7 +377,7 @@ const EnhancedChatSystem = ({
             key={message.id}
             className={`flex ${message.senderId === currentUserId ? 'justify-end' : 'justify-start'}`}
           >
-            <div className="max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+            <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
               message.messageType === 'system'
                 ? 'bg-gray-100 text-gray-600 text-center mx-auto'
                 : message.senderId === currentUserId
@@ -404,7 +403,7 @@ const EnhancedChatSystem = ({
             </div>
           </div>
         ))}
-
+        
         {/* Typing Indicator */}
         {typingUsers.size > 0 && (
           <div className="flex justify-start">
@@ -420,7 +419,7 @@ const EnhancedChatSystem = ({
             </div>
           </div>
         )}
-
+        
         <div ref={messagesEndRef} />
       </div>
 
